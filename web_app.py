@@ -18,7 +18,7 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 # 👇 아래 따옴표 안에 구글 드라이브 폴더 ID를 다시 넣어주세요!
-DRIVE_FOLDER_ID = '여기에_폴더ID를_붙여넣으세요' 
+DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz?ths=true' 
 ADMIN_ID = "admin"
 
 ADMIN_NOTICE = """
