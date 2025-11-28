@@ -214,12 +214,19 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [최종 해킹 버전] 주소 클릭 시 부모창 URL을 변경하여 파이썬으로 값 전달
+            # [수정된 안정 버전] 클릭 시 '복사' 후 안내 문구 표시
             daum_code = """
             <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색 (클릭 시 자동 입력)</h4>
+                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색</h4>
                 <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
                 </div>
+                
+                <div id="msg" style="display:none; margin-top:10px; padding:15px; background-color:#e6fffa; color:#006d5b; border-radius:5px; border:1px solid #b2f5ea; text-align:center;">
+                    <h3 style="margin:0; color:#2c7a7b;">✅ 주소 복사 완료!</h3>
+                    <p style="margin:5px 0 0 0;">아래 <b>'기본 주소'</b> 칸을 클릭하고<br>키보드의 <b style="color:red; background-color:yellow;">[Ctrl + V]</b>를 눌러주세요.</p>
+                </div>
+                
+                <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
             </div>
             
             <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
@@ -235,12 +242,19 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [핵심 로직] 부모 창(Streamlit) URL에 파라미터를 붙여서 이동(새로고침)
-                        var link = document.createElement('a');
-                        link.href = '?addr=' + encodeURIComponent(fullAddr);
-                        link.target = '_parent'; 
-                        document.body.appendChild(link);
-                        link.click();
+                        // 복사 기능 실행
+                        var copyText = document.getElementById("copy_area");
+                        copyText.value = fullAddr;
+                        copyText.select();
+                        
+                        try {
+                            document.execCommand('copy');
+                            // 지도 숨기고 성공 메시지 크게 표시
+                            document.getElementById('layer').style.display = 'none';
+                            document.getElementById('msg').style.display = 'block';
+                        } catch (err) {
+                            alert('주소: ' + fullAddr + '\\n직접 복사해서 사용하세요.');
+                        }
                     },
                     width : '100%',
                     height : '100%'
