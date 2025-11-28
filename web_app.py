@@ -214,11 +214,20 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
+# [수정된 주소 검색 코드] 배경색 흰색 지정 + HTTPS 강제
             daum_code = """
-            <div id="layer" style="display:block;position:relative;overflow:hidden;z-index:1;-webkit-overflow-scrolling:touch;"></div>
-            <div id="msg" style="display:none; color:blue; font-weight:bold; margin-top:5px;">✅ 주소가 복사되었습니다! 아래 칸에 붙여넣기(Ctrl+V) 하세요.</div>
-            <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
-            <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+            <div style="background-color:white; padding:10px; border-radius:10px;">
+                <h4 style="margin-bottom:10px; color:black;">📮 주소 검색</h4>
+                <div id="layer" style="display:block;position:relative;overflow:hidden;z-index:1;-webkit-overflow-scrolling:touch; height:300px; border:1px solid #ccc;">
+                    <p style="text-align:center; padding-top:100px; color:black;">주소 검색창 로딩 중...</p>
+                </div>
+                <div id="msg" style="display:none; color:blue; font-weight:bold; margin-top:10px;">
+                    ✅ 주소가 복사되었습니다!<br>아래 '기본 주소' 칸에 붙여넣기(Ctrl+V) 하세요.
+                </div>
+                <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
+            </div>
+            
+            <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 new daum.Postcode({
                     oncomplete: function(data) {
@@ -230,18 +239,22 @@ else:
                             if(extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
+                        
                         var copyText = document.getElementById("copy_area");
                         copyText.value = fullAddr;
                         copyText.select();
+                        
                         try {
                             document.execCommand('copy');
+                            // 검색창 닫고 안내문구 표시
                             document.getElementById('layer').style.display = 'none';
                             document.getElementById('msg').style.display = 'block';
                         } catch (err) {
                             alert('주소: ' + fullAddr + '\\n직접 복사해서 사용하세요.');
                         }
                     },
-                    width : '100%', height : '100%'
+                    width : '100%',
+                    height : '100%'
                 }).embed(document.getElementById('layer'));
             </script>
             """
