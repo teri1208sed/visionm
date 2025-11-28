@@ -14,12 +14,19 @@ from datetime import datetime
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
 # ==========================================
+# ⚡ [핵심 로직] 주소 자동 입력을 위한 데이터 낚아채기
+# ==========================================
+# 앱이 새로고침 될 때 URL에 'addr'이라는 꼬리표가 있으면 가져옵니다.
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    # 주소를 가져왔으면 꼬리표를 지워줍니다 (깔끔하게)
+    st.query_params.clear()
+
+# ==========================================
 # ⚙️ [사용자 설정]
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
-
-# 👇 [요청하신 구글 드라이브 ID 적용 완료]
-DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz'
+DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz' # 적용 완료
 ADMIN_ID = "admin"
 
 ADMIN_NOTICE = """
@@ -35,11 +42,9 @@ ADMIN_NOTICE = """
 def get_services():
     scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     
-    # 1. Streamlit Cloud Secrets 우선 확인
     if "google_auth" in st.secrets:
         key_dict = dict(st.secrets["google_auth"])
         creds = Credentials.from_service_account_info(key_dict, scopes=scope)
-    # 2. 로컬 secrets.json 확인 (테스트용)
     else:
         try:
             creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
@@ -53,7 +58,6 @@ def get_services():
 
 def upload_file(drive_service, file_obj):
     if file_obj is None: return ""
-    # 구글 드라이브 업로드 로직
     metadata = {'name': file_obj.name, 'parents': [DRIVE_FOLDER_ID]}
     media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type)
     file = drive_service.files().create(body=metadata, media_body=media, fields='webViewLink').execute()
@@ -94,13 +98,6 @@ def validate_email(email):
 # ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
-
-# 👇 [핵심] URL 쿼리 파라미터 낚아채기 (자동 입력용)
-# 주소창에 ?addr=... 가 있으면 가져와서 session_state에 저장
-if "addr" in st.query_params:
-    st.session_state['selected_addr'] = st.query_params["addr"]
-    # 무한 새로고침 방지를 위해 URL 파라미터 청소
-    st.query_params.clear()
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -202,6 +199,7 @@ else:
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
+            # key를 넣어야 새로고침(주소입력) 시 데이터가 날아가지 않습니다.
             c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             
@@ -218,38 +216,17 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [🔥 초강력 버전] 자동 입력 + 복사 동시 지원 스크립트
-            # 작동 원리: 
-            # 1. 주소를 선택하면 '확인' 버튼이 뜸 (사용자 클릭 유도 -> 브라우저 보안 통과)
-            # 2. 버튼 클릭 시 -> 클립보드 복사(navigator.clipboard) + URL 이동(window.top.location) 동시 실행
+            # [🔥🔥 자동 입력 최종 솔루션] 
+            # target='_top'을 사용하여 iframe을 뚫고 최상위 페이지를 새로고침하며 데이터를 전달합니다.
             daum_code = """
-            <style>
-                .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; }
-                .btn-confirm { 
-                    display:none; width:100%; padding:15px; margin-top:10px; 
-                    background:#2c7a7b; color:white; border:none; border-radius:8px; 
-                    font-size:16px; font-weight:bold; cursor:pointer; 
-                }
-                .btn-confirm:hover { background:#285e61; }
-            </style>
-            
-            <div class="wrap">
-                <h4 style="margin:0 0 10px 0; color:#333;">🔍 주소 검색</h4>
-                <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
-                
-                <!-- 확인 버튼: 주소 선택 시 나타남 -->
-                <button id="btnConfirm" class="btn-confirm" onclick="executeAutoFill()">
-                    ✅ 이 주소로 입력하기 (클릭)
-                </button>
+            <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색 (클릭 시 자동 입력)</h4>
+                <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
+                </div>
             </div>
             
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
-                var selectedAddr = ""; // 선택한 주소 저장용
-                
-                var element_layer = document.getElementById('layer');
-                var btn = document.getElementById('btnConfirm');
-
                 new daum.Postcode({
                     oncomplete: function(data) {
                         var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
@@ -259,46 +236,32 @@ else:
                             if(data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
                             if(extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
                         }
+                        var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        selectedAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                        
-                        // 주소를 선택하면 지도 숨기고 버튼을 보여줌
-                        element_layer.style.display = 'none';
-                        btn.style.display = 'block';
-                        btn.innerText = "✅ '" + selectedAddr + "' 입력하기 (클릭)";
+                        // [핵심 기술] 부모 창(Streamlit)을 강제로 이동시키는 링크 생성 및 클릭
+                        // _top 타겟을 써야 iframe 밖으로 나갈 수 있습니다.
+                        var link = document.createElement('a');
+                        link.href = '?addr=' + encodeURIComponent(fullAddr);
+                        link.target = '_top'; 
+                        document.body.appendChild(link);
+                        link.click();
                     },
                     width : '100%',
                     height : '100%'
-                }).embed(element_layer);
-
-                // 버튼 클릭 시 실행되는 함수 (복사 + 자동이동)
-                function executeAutoFill() {
-                    // 1. 클립보드에 복사 시도 (최신 방식)
-                    if (navigator.clipboard) {
-                        navigator.clipboard.writeText(selectedAddr);
-                    }
-                    
-                    // 2. 부모창(앱) URL 변경하여 자동 입력 시도
-                    try {
-                        // target="_parent" 대신 window.top을 사용하여 강력하게 이동
-                        window.top.location.href = '?addr=' + encodeURIComponent(selectedAddr);
-                    } catch(e) {
-                        // 만약 보안상 막히면 경고창 띄우기
-                        alert("자동 입력이 차단되었습니다.\\n방금 주소가 복사되었으니 [Ctrl+V]로 붙여넣어주세요!");
-                    }
-                }
+                }).embed(document.getElementById('layer'));
             </script>
             """
             
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=480)
+                components.html(daum_code, height=450)
 
             a1, a2 = st.columns([2, 1])
-            # 자동 입력된 값을 보여주고, 실패 시 붙여넣기 유도
+            
+            # 여기서 session_state에 저장된 주소를 자동으로 띄워줍니다.
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 value=st.session_state.get('selected_addr', ''),
-                placeholder="검색하면 자동으로 입력됩니다. (안되면 Ctrl+V)",
+                placeholder="위에서 검색하면 자동으로 입력됩니다.",
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
