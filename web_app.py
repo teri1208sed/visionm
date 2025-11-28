@@ -64,32 +64,52 @@ def upload_file(drive_service, file_obj):
     return file.get('webViewLink')
 
 # ==========================================
-# 🛡️ [유효성 검사 및 포맷팅]
+# 🛡️ [유효성 검사 및 포맷팅] (수정됨)
 # ==========================================
 def clean_number(num):
+    """숫자만 남기고 다 지움"""
     return re.sub(r'\D', '', str(num))
 
 def format_biz_no(num):
+    """사업자번호 포맷팅 (000-00-00000)"""
     clean = clean_number(num)
     if len(clean) == 10:
         return f"{clean[:3]}-{clean[3:5]}-{clean[5:]}"
     return num
 
 def format_phone(num):
+    """
+    [수정] 전화번호 포맷팅 (유선, 무선, 인터넷 전화 모두 지원)
+    - 02 (서울): 9자리(02-123-4567) or 10자리(02-1234-5678)
+    - 그 외 (010, 031, 070 등): 10자리(031-123-4567) or 11자리(010-1234-5678)
+    """
     clean = clean_number(num)
-    if len(clean) == 11:
-        return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
-    elif len(clean) == 10:
-        return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
-    return num
+    length = len(clean)
+    
+    if length < 9: # 너무 짧으면 그대로 반환
+        return num
+    
+    if clean.startswith('02'): # 서울 국번
+        if length == 9:
+            return f"{clean[:2]}-{clean[2:5]}-{clean[5:]}"
+        elif length == 10:
+            return f"{clean[:2]}-{clean[2:6]}-{clean[6:]}"
+    else: # 3자리 국번 (010, 031, 070, 050 등)
+        if length == 10:
+            return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
+        elif length == 11:
+            return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
+            
+    return num # 규칙에 안 맞으면 그대로
 
 def validate_biz_no(number):
     clean = clean_number(number)
     return len(clean) == 10
 
 def validate_phone(number):
+    """[수정] 0으로 시작하고 9~11자리 숫자면 OK"""
     clean = clean_number(number)
-    return len(clean) >= 10 and len(clean) <= 11 and clean.startswith("01")
+    return clean.startswith("0") and (9 <= len(clean) <= 11)
 
 def validate_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -199,7 +219,6 @@ else:
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            # key를 넣어야 새로고침(주소입력) 시 데이터가 날아가지 않습니다.
             c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             
@@ -216,13 +235,11 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [⚡ 최종 해결책] 링크(a 태그)를 버튼처럼 꾸며서 클릭 유도
-            # 사용자가 이 버튼을 '직접' 클릭하면 브라우저는 보안 경고 없이 페이지를 이동시킵니다.
+            # [⚡ 자동 입력 해결책] 링크를 버튼처럼 만들어서 클릭 유도
             daum_code = """
             <style>
                 .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; font-family: sans-serif; }
                 
-                /* 진짜 버튼처럼 생긴 링크 스타일 */
                 #btn_link { 
                     display:none; 
                     box-sizing: border-box;
@@ -247,11 +264,8 @@ else:
             <div class="wrap">
                 <h4>🔍 주소 검색</h4>
                 
-                <!-- 1. 주소 검색창 (처음엔 보임) -->
                 <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
                 
-                <!-- 2. 주소 입력 확정 버튼 (검색 후 보임) -->
-                <!-- 주의: 이것은 button이 아니라 a(링크) 태그입니다. -->
                 <a id="btn_link" href="#" target="_top">
                     ✅ 주소 입력 완료! (여기를 클릭하세요)
                 </a>
@@ -264,7 +278,6 @@ else:
 
                 new daum.Postcode({
                     oncomplete: function(data) {
-                        // 주소 데이터 조합
                         var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
                         var extraAddr = '';
                         if(data.userSelectedType === 'R'){
@@ -274,15 +287,11 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [핵심] 지도 숨기고, 버튼(링크)에 주소 파라미터 심기
                         element_layer.style.display = 'none';
                         
-                        // 사용자가 클릭할 링크의 주소를 동적으로 생성
-                        // target="_top"이 있어서 클릭 시 앱이 새로고침되며 데이터가 전달됨
                         btn_link.href = "?addr=" + encodeURIComponent(fullAddr);
                         btn_link.style.display = "block";
                         
-                        // (선택사항) 가능한 경우 자동 클릭 시도 (보안 강한 브라우저는 무시함)
                         try { btn_link.click(); } catch(e) {}
                     },
                     width : '100%',
@@ -295,7 +304,6 @@ else:
                 components.html(daum_code, height=450)
 
             a1, a2 = st.columns([2, 1])
-            # 자동 입력된 값을 보여줍니다.
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 value=st.session_state.get('selected_addr', ''),
@@ -310,7 +318,8 @@ else:
             
             m1, m2, m3 = st.columns(3)
             mgr_nm = m1.text_input("담당자명 (필수)", key="k_mgr_nm")
-            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="숫자만 입력", key="k_mgr_ph")
+            # [안내] 연락처 placeholder 변경
+            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="010, 02, 031, 070 모두 가능", key="k_mgr_ph")
             mgr_em = m3.text_input("이메일 (필수)", key="k_mgr_em")
 
             st.markdown("---")
@@ -341,7 +350,7 @@ else:
                 if biz_no_input and not validate_biz_no(biz_no_input): 
                     err_msgs.append("사업자번호는 숫자 10자리여야 합니다.")
                 if mgr_ph_input and not validate_phone(mgr_ph_input): 
-                    err_msgs.append("연락처를 확인해주세요 (010으로 시작하는 숫자)")
+                    err_msgs.append("연락처를 확인해주세요 (지역번호, 070 포함 숫자만 입력)")
                 if mgr_em and not validate_email(mgr_em): 
                     err_msgs.append("이메일 형식이 올바르지 않습니다.")
 
