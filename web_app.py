@@ -17,8 +17,9 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 # ⚙️ [사용자 설정]
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
-# 👇 아래 따옴표 안에 구글 드라이브 폴더 ID를 다시 넣어주세요!
-DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz?ths=true' 
+
+# 👇 [중요] 아래 따옴표 안에 구글 드라이브 폴더 ID를 꼭 다시 넣어주세요!
+DRIVE_FOLDER_ID = '여기에_폴더ID를_붙여넣으세요' 
 ADMIN_ID = "admin"
 
 ADMIN_NOTICE = """
@@ -91,12 +92,6 @@ def validate_email(email):
 # 🚀 [앱 메인 로직]
 # ==========================================
 
-# 👇 [핵심] URL 쿼리 파라미터에서 주소 낚아채기 (자동 입력을 위함)
-if "addr" in st.query_params:
-    st.session_state['selected_addr'] = st.query_params["addr"]
-    # URL을 깨끗하게 청소 (새로고침 시 계속 남지 않도록)
-    st.query_params.clear()
-
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
     st.session_state['user_name'] = None
@@ -165,7 +160,6 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        st.session_state['selected_addr'] = None # 주소값도 초기화
         st.rerun()
 
     if not is_approved:
@@ -197,7 +191,6 @@ else:
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            # key를 지정해야 주소 검색 후 새로고침되어도 입력값이 유지됩니다.
             c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             
@@ -214,7 +207,7 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [수정된 안정 버전] 클릭 시 '복사' 후 안내 문구 표시
+            # [안정 버전] 주소 클릭 시 복사 후 안내 메시지 표시 (배포 환경 호환)
             daum_code = """
             <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색</h4>
@@ -242,14 +235,12 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // 복사 기능 실행
                         var copyText = document.getElementById("copy_area");
                         copyText.value = fullAddr;
                         copyText.select();
                         
                         try {
                             document.execCommand('copy');
-                            // 지도 숨기고 성공 메시지 크게 표시
                             document.getElementById('layer').style.display = 'none';
                             document.getElementById('msg').style.display = 'block';
                         } catch (err) {
@@ -263,14 +254,13 @@ else:
             """
             
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=450) # 높이를 조금 여유있게
+                components.html(daum_code, height=450)
 
             a1, a2 = st.columns([2, 1])
-            # 낚아챈 주소값을 value에 넣어줍니다.
+            # 사용자에게 붙여넣기를 유도하는 안내 문구
             addr_full = a1.text_input(
-                "기본 주소 (자동 입력됨)", 
-                value=st.session_state.get('selected_addr', ''), 
-                placeholder="검색하면 자동으로 입력됩니다.",
+                "기본 주소 (여기를 클릭하고 Ctrl+V)", 
+                placeholder="[12345] 서울시... (복사된 주소를 붙여넣으세요)",
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
@@ -339,9 +329,6 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
-                            
-                            # (선택) 저장 후 주소값 초기화
-                            # st.session_state['selected_addr'] = "" 
                         except Exception as e:
                             st.error(f"오류: {e}")
 
