@@ -23,7 +23,7 @@ ADMIN_ID = "admin"
 
 # 👇 [중요] 아까 만드신 '구글 앱스 스크립트(GAS) 배포 주소'를 여기에 넣으세요!
 # (주소 끝이 /exec 로 끝나야 합니다)
-GAS_URL = "https://script.google.com/macros/s/AKfycbx...여기에_복사한_주소를_넣으세요.../exec" 
+GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
 
 ADMIN_NOTICE = """
 ##### 📢 등록 유의사항 안내
