@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import gspread
 import re
-import requests # 통신용 모듈 추가
-import base64   # 파일 변환용 모듈 추가
+import requests 
+import base64   
 import json
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
@@ -21,8 +21,9 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 ADMIN_ID = "admin"
 
-# 👇 [중요] Step 2에서 복사한 '웹 앱 URL'을 여기에 붙여넣으세요! (exec로 끝나는 주소)
-GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
+# 👇 [중요] 아까 만드신 '구글 앱스 스크립트(GAS) 배포 주소'를 여기에 넣으세요!
+# (주소 끝이 /exec 로 끝나야 합니다)
+GAS_URL = "https://script.google.com/macros/s/AKfycbx...여기에_복사한_주소를_넣으세요.../exec" 
 
 ADMIN_NOTICE = """
 ##### 📢 등록 유의사항 안내
@@ -32,10 +33,14 @@ ADMIN_NOTICE = """
 """
 
 # ==========================================
-# ☁️ [구글 시트 연결] (파일 업로드는 GAS로 대체됨)
+# ☁️ [구글 시트 연결] (수정됨: 드라이브 권한 복구)
 # ==========================================
 def get_services():
-    scope = ['https://www.googleapis.com/auth/spreadsheets']
+    # [수정] 스프레드시트를 이름으로 찾으려면 'drive' 권한이 필수입니다. 다시 추가했습니다.
+    scope = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
     
     if "google_auth" in st.secrets:
         key_dict = dict(st.secrets["google_auth"])
@@ -50,7 +55,7 @@ def get_services():
     gc = gspread.authorize(creds)
     return gc
 
-# 🔥 [핵심 변경] 로봇 대신 GAS(앱스 스크립트)로 파일을 보내는 함수
+# 🔥 로봇 대신 GAS(앱스 스크립트)로 파일을 보내는 함수
 def upload_file_to_gas(file_obj):
     if file_obj is None: return ""
     
@@ -66,8 +71,7 @@ def upload_file_to_gas(file_obj):
             'fileData': b64_data
         }
         
-        # 3. 우체국(GAS)으로 발송 (POST 요청)
-        # requests.post는 json 데이터를 보낼 때 data=json.dumps(...) 헤더 필요
+        # 3. 우체국(GAS)으로 발송
         response = requests.post(
             GAS_URL, 
             data=json.dumps(payload),
