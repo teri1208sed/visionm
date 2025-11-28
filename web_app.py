@@ -9,19 +9,18 @@ from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
 
 # ==========================================
-# 🚀 [앱 기본 설정] (가장 먼저 실행되어야 함)
+# 🚀 [앱 기본 설정]
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
 # ==========================================
-# ⚙️ [사용자 설정] - 내용을 꼭 확인하세요!
+# ⚙️ [사용자 설정]
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
-# 👇 아래 따옴표 안에 구글 드라이브 폴더 ID를 꼭 넣으세요!
-DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz?hl=ko' 
+# 👇 아래 따옴표 안에 구글 드라이브 폴더 ID를 다시 넣어주세요!
+DRIVE_FOLDER_ID = '여기에_폴더ID를_붙여넣으세요' 
 ADMIN_ID = "admin"
 
-# 👇 [관리자 공지사항] 내용을 여기서 수정하세요!
 ADMIN_NOTICE = """
 ##### 📢 등록 유의사항 안내
 1. **사업자등록증** 또는 **명함** 중 하나는 반드시 첨부해야 합니다.
@@ -30,17 +29,14 @@ ADMIN_NOTICE = """
 """
 
 # ==========================================
-# ☁️ [구글 서비스 연결] (수정된 부분)
+# ☁️ [구글 서비스 연결]
 # ==========================================
 def get_services():
     scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     
-    # 1. Streamlit Cloud Secrets에서 [google_auth] 섹션을 먼저 찾습니다.
     if "google_auth" in st.secrets:
         key_dict = dict(st.secrets["google_auth"])
         creds = Credentials.from_service_account_info(key_dict, scopes=scope)
-    
-    # 2. 만약 Secrets가 없다면 로컬 파일(secrets.json)을 찾습니다. (내 컴퓨터 테스트용)
     else:
         try:
             creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
@@ -63,22 +59,19 @@ def upload_file(drive_service, file_obj):
 # 🛡️ [유효성 검사 및 포맷팅]
 # ==========================================
 def clean_number(num):
-    """숫자만 남기고 다 지움"""
     return re.sub(r'\D', '', str(num))
 
 def format_biz_no(num):
-    """숫자 10자리를 000-00-00000 형태로 변환"""
     clean = clean_number(num)
     if len(clean) == 10:
         return f"{clean[:3]}-{clean[3:5]}-{clean[5:]}"
-    return num # 실패시 그대로 반환
+    return num
 
 def format_phone(num):
-    """휴대폰 번호에 - 붙이기"""
     clean = clean_number(num)
-    if len(clean) == 11: # 01012345678
+    if len(clean) == 11:
         return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
-    elif len(clean) == 10: # 0111234567
+    elif len(clean) == 10:
         return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
     return num
 
@@ -97,6 +90,12 @@ def validate_email(email):
 # ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
+
+# 👇 [핵심] URL 쿼리 파라미터에서 주소 낚아채기 (자동 입력을 위함)
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    # URL을 깨끗하게 청소 (새로고침 시 계속 남지 않도록)
+    st.query_params.clear()
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -120,8 +119,8 @@ if not st.session_state['user_id']:
     tab1, tab2 = st.tabs(["로그인", "회원가입 요청"])
     
     with tab1:
-        lid = st.text_input("아이디")
-        lpw = st.text_input("비밀번호", type="password")
+        lid = st.text_input("아이디", key="login_id")
+        lpw = st.text_input("비밀번호", type="password", key="login_pw")
         if st.button("로그인", type="primary"):
             users = ws_user.get_all_records()
             found = False
@@ -137,9 +136,9 @@ if not st.session_state['user_id']:
 
     with tab2:
         st.info("관리자의 승인 후 로그인이 가능합니다.")
-        nid = st.text_input("희망 아이디")
-        npw = st.text_input("희망 비밀번호", type="password")
-        nname = st.text_input("업체명 (이름)")
+        nid = st.text_input("희망 아이디", key="join_id")
+        npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
+        nname = st.text_input("업체명 (이름)", key="join_name")
         
         if st.button("가입 신청"):
             if not (nid and npw and nname):
@@ -166,6 +165,7 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
+        st.session_state['selected_addr'] = None # 주소값도 초기화
         st.rerun()
 
     if not is_approved:
@@ -192,42 +192,34 @@ else:
 
     else:
         st.divider()
-        # [관리자 공지사항 표시]
         st.info(ADMIN_NOTICE)
         
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠")
-            c_rep = c2.text_input("대표자명 (필수)")
+            # key를 지정해야 주소 검색 후 새로고침되어도 입력값이 유지됩니다.
+            c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
+            c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             
             c3, c4 = st.columns(2)
-            biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력 (예: 1234567890)")
+            biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력", key="k_biz_no")
             
             ind_options = [
                 "건설", "건축(전기/인테리어)", "토목(엔지니어링)", "제조", 
                 "자동차", "항공", "금형", "반도체", "철강", "플랜트", 
                 "스마트공장", "기타", "공공", "서비스"
             ]
-            industry = c4.selectbox("업종 (필수)", ind_options)
+            industry = c4.selectbox("업종 (필수)", ind_options, key="k_industry")
 
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-# [수정된 주소 검색 코드] 배경색 흰색 지정 + HTTPS 강제
-            # [수정 버전] 로딩 글자 제거 + 높이 확장 + 디자인 깔끔하게
+            # [최종 해킹 버전] 주소 클릭 시 부모창 URL을 변경하여 파이썬으로 값 전달
             daum_code = """
             <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색</h4>
-                
+                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색 (클릭 시 자동 입력)</h4>
                 <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
                 </div>
-                
-                <div id="msg" style="display:none; margin-top:10px; padding:10px; background-color:#e6fffa; color:#006d5b; border-radius:5px; font-weight:bold; border:1px solid #b2f5ea;">
-                    ✅ 주소가 복사되었습니다!<br>아래 '기본 주소' 칸에 붙여넣기(Ctrl+V) 하세요.
-                </div>
-                
-                <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
             </div>
             
             <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
@@ -243,48 +235,50 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        var copyText = document.getElementById("copy_area");
-                        copyText.value = fullAddr;
-                        copyText.select();
-                        
-                        try {
-                            document.execCommand('copy');
-                            document.getElementById('layer').style.display = 'none';
-                            document.getElementById('msg').style.display = 'block';
-                        } catch (err) {
-                            alert('주소: ' + fullAddr + '\\n직접 복사해서 사용하세요.');
-                        }
+                        // [핵심 로직] 부모 창(Streamlit) URL에 파라미터를 붙여서 이동(새로고침)
+                        var link = document.createElement('a');
+                        link.href = '?addr=' + encodeURIComponent(fullAddr);
+                        link.target = '_parent'; 
+                        document.body.appendChild(link);
+                        link.click();
                     },
                     width : '100%',
                     height : '100%'
                 }).embed(document.getElementById('layer'));
             </script>
             """
+            
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=350)
+                components.html(daum_code, height=450) # 높이를 조금 여유있게
 
             a1, a2 = st.columns([2, 1])
-            addr_full = a1.text_input("기본 주소 (붙여넣기)", placeholder="[12345] 서울시...")
-            addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호")
+            # 낚아챈 주소값을 value에 넣어줍니다.
+            addr_full = a1.text_input(
+                "기본 주소 (자동 입력됨)", 
+                value=st.session_state.get('selected_addr', ''), 
+                placeholder="검색하면 자동으로 입력됩니다.",
+                key="k_addr_full"
+            )
+            addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
 
             st.markdown("---")
             st.markdown("#### 3. 담당자 정보")
-            prod = st.radio("제품 (필수)", ["ZWCAD", "ZW3D"], horizontal=True)
+            prod = st.radio("제품 (필수)", ["ZWCAD", "ZW3D"], horizontal=True, key="k_prod")
             
             m1, m2, m3 = st.columns(3)
-            mgr_nm = m1.text_input("담당자명 (필수)")
-            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="숫자만 입력 (예: 01012345678)")
-            mgr_em = m3.text_input("이메일 (필수)")
+            mgr_nm = m1.text_input("담당자명 (필수)", key="k_mgr_nm")
+            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="숫자만 입력", key="k_mgr_ph")
+            mgr_em = m3.text_input("이메일 (필수)", key="k_mgr_em")
 
             st.markdown("---")
             st.markdown("#### 4. 첨부파일 (둘 중 하나 필수)")
             col_f1, col_f2 = st.columns(2)
-            up_file_biz = col_f1.file_uploader("사업자등록증", type=['png', 'jpg', 'jpeg', 'pdf'])
-            up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'jpeg', 'pdf'])
+            up_file_biz = col_f1.file_uploader("사업자등록증", type=['png', 'jpg', 'jpeg', 'pdf'], key="k_file_biz")
+            up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'jpeg', 'pdf'], key="k_file_card")
             
             st.markdown("---")
             st.caption("※ 수집된 정보는 ZWPortal 등록 대행을 위해 제3자에게 제공되며, 업무 목적 달성 후 파기됩니다.")
-            agree = st.checkbox("✅ [필수] 개인정보 수집 및 제3자 제공에 동의합니다.")
+            agree = st.checkbox("✅ [필수] 개인정보 수집 및 제3자 제공에 동의합니다.", key="k_agree")
 
             submit_btn = st.form_submit_button("🚀 등록 접수하기", type="primary")
 
@@ -331,6 +325,9 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
+                            
+                            # (선택) 저장 후 주소값 초기화
+                            # st.session_state['selected_addr'] = "" 
                         except Exception as e:
                             st.error(f"오류: {e}")
 
