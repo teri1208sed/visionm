@@ -2,32 +2,27 @@ import streamlit as st
 import pandas as pd
 import gspread
 import re
+import requests # 통신용 모듈 추가
+import base64   # 파일 변환용 모듈 추가
+import json
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
 
 # ==========================================
-# 🚀 [앱 기본 설정] (반드시 맨 위에 있어야 함)
+# 🚀 [앱 기본 설정]
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
-
-# ==========================================
-# ⚡ [핵심 로직] 주소 자동 입력을 위한 데이터 낚아채기
-# ==========================================
-# 앱이 새로고침 될 때 URL에 'addr'이라는 꼬리표가 있으면 가져옵니다.
-if "addr" in st.query_params:
-    st.session_state['selected_addr'] = st.query_params["addr"]
-    # 주소를 가져왔으면 꼬리표를 지워줍니다 (깔끔하게)
-    st.query_params.clear()
 
 # ==========================================
 # ⚙️ [사용자 설정]
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
-DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz' # 적용 완료
 ADMIN_ID = "admin"
+
+# 👇 [중요] Step 2에서 복사한 '웹 앱 URL'을 여기에 붙여넣으세요! (exec로 끝나는 주소)
+GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
 
 ADMIN_NOTICE = """
 ##### 📢 등록 유의사항 안내
@@ -37,10 +32,10 @@ ADMIN_NOTICE = """
 """
 
 # ==========================================
-# ☁️ [구글 서비스 연결]
+# ☁️ [구글 시트 연결] (파일 업로드는 GAS로 대체됨)
 # ==========================================
 def get_services():
-    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    scope = ['https://www.googleapis.com/auth/spreadsheets']
     
     if "google_auth" in st.secrets:
         key_dict = dict(st.secrets["google_auth"])
@@ -49,75 +44,83 @@ def get_services():
         try:
             creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
         except FileNotFoundError:
-            st.error("🚨 인증 오류: 'secrets.json' 파일도 없고 Streamlit Secrets 설정도 없습니다.")
+            st.error("🚨 인증 오류: secrets.json 없음")
             st.stop()
         
     gc = gspread.authorize(creds)
-    drive = build('drive', 'v3', credentials=creds)
-    return gc, drive
+    return gc
 
-def upload_file(drive_service, file_obj):
+# 🔥 [핵심 변경] 로봇 대신 GAS(앱스 스크립트)로 파일을 보내는 함수
+def upload_file_to_gas(file_obj):
     if file_obj is None: return ""
-    metadata = {'name': file_obj.name, 'parents': [DRIVE_FOLDER_ID]}
-    media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type)
-    file = drive_service.files().create(body=metadata, media_body=media, fields='webViewLink').execute()
-    return file.get('webViewLink')
+    
+    try:
+        # 1. 파일을 문자열(Base64)로 변환
+        content = file_obj.getvalue()
+        b64_data = base64.b64encode(content).decode('utf-8')
+        
+        # 2. 보낼 데이터 포장
+        payload = {
+            'fileName': file_obj.name,
+            'mimeType': file_obj.type,
+            'fileData': b64_data
+        }
+        
+        # 3. 우체국(GAS)으로 발송 (POST 요청)
+        # requests.post는 json 데이터를 보낼 때 data=json.dumps(...) 헤더 필요
+        response = requests.post(
+            GAS_URL, 
+            data=json.dumps(payload),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        # 4. 결과 확인
+        res_data = response.json()
+        if res_data.get('result') == 'success':
+            return res_data['url']
+        else:
+            st.error(f"업로드 실패: {res_data.get('error')}")
+            return ""
+            
+    except Exception as e:
+        st.error(f"연결 오류: {str(e)}")
+        return ""
 
 # ==========================================
-# 🛡️ [유효성 검사 및 포맷팅] (수정됨)
+# 🛡️ [유효성 검사 및 포맷팅]
 # ==========================================
-def clean_number(num):
-    """숫자만 남기고 다 지움"""
-    return re.sub(r'\D', '', str(num))
+def clean_number(num): return re.sub(r'\D', '', str(num))
 
 def format_biz_no(num):
-    """사업자번호 포맷팅 (000-00-00000)"""
     clean = clean_number(num)
-    if len(clean) == 10:
-        return f"{clean[:3]}-{clean[3:5]}-{clean[5:]}"
+    if len(clean) == 10: return f"{clean[:3]}-{clean[3:5]}-{clean[5:]}"
     return num
 
 def format_phone(num):
-    """
-    [수정] 전화번호 포맷팅 (유선, 무선, 인터넷 전화 모두 지원)
-    - 02 (서울): 9자리(02-123-4567) or 10자리(02-1234-5678)
-    - 그 외 (010, 031, 070 등): 10자리(031-123-4567) or 11자리(010-1234-5678)
-    """
     clean = clean_number(num)
     length = len(clean)
-    
-    if length < 9: # 너무 짧으면 그대로 반환
-        return num
-    
-    if clean.startswith('02'): # 서울 국번
-        if length == 9:
-            return f"{clean[:2]}-{clean[2:5]}-{clean[5:]}"
-        elif length == 10:
-            return f"{clean[:2]}-{clean[2:6]}-{clean[6:]}"
-    else: # 3자리 국번 (010, 031, 070, 050 등)
-        if length == 10:
-            return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
-        elif length == 11:
-            return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
-            
-    return num # 규칙에 안 맞으면 그대로
+    if length < 9: return num
+    if clean.startswith('02'):
+        if length == 9: return f"{clean[:2]}-{clean[2:5]}-{clean[5:]}"
+        elif length == 10: return f"{clean[:2]}-{clean[2:6]}-{clean[6:]}"
+    else:
+        if length == 10: return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
+        elif length == 11: return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
+    return num
 
-def validate_biz_no(number):
-    clean = clean_number(number)
-    return len(clean) == 10
-
-def validate_phone(number):
-    """[수정] 0으로 시작하고 9~11자리 숫자면 OK"""
-    clean = clean_number(number)
-    return clean.startswith("0") and (9 <= len(clean) <= 11)
-
-def validate_email(email):
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+def validate_biz_no(number): return len(clean_number(number)) == 10
+def validate_phone(number): 
+    c = clean_number(number)
+    return c.startswith("0") and (9 <= len(c) <= 11)
+def validate_email(email): return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email) is not None
 
 # ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
+
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    st.query_params.clear()
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -125,7 +128,7 @@ if 'user_id' not in st.session_state:
     st.session_state['is_approved'] = False
 
 try:
-    gc, drive = get_services()
+    gc = get_services()
     sh = gc.open(SPREADSHEET_NAME)
     ws_req = sh.worksheet("requests")
     ws_user = sh.worksheet("users")
@@ -134,12 +137,11 @@ except Exception as e:
     st.stop()
 
 # ----------------------------------------------------
-# [화면 A] 로그인 및 회원가입
+# [화면 A] 로그인
 # ----------------------------------------------------
 if not st.session_state['user_id']:
     st.title("🔒 VISIONM 파트너 로그인")
     tab1, tab2 = st.tabs(["로그인", "회원가입 요청"])
-    
     with tab1:
         lid = st.text_input("아이디", key="login_id")
         lpw = st.text_input("비밀번호", type="password", key="login_pw")
@@ -155,25 +157,20 @@ if not st.session_state['user_id']:
                     found = True
                     st.rerun()
             if not found: st.error("정보가 일치하지 않습니다.")
-
     with tab2:
         st.info("관리자의 승인 후 로그인이 가능합니다.")
         nid = st.text_input("희망 아이디", key="join_id")
         npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
         nname = st.text_input("업체명 (이름)", key="join_name")
-        
         if st.button("가입 신청"):
-            if not (nid and npw and nname):
-                st.error("모든 항목을 입력해주세요.")
+            if not (nid and npw and nname): st.error("모든 항목을 입력해주세요.")
             else:
                 existing = ws_user.col_values(1)
-                if nid in existing:
-                    st.error("이미 사용 중인 아이디입니다.")
+                if nid in existing: st.error("이미 사용 중인 아이디입니다.")
                 else:
-                    if len(ws_user.get_all_values()) == 0:
-                        ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부"])
+                    if len(ws_user.get_all_values()) == 0: ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부"])
                     ws_user.append_row([nid, npw, nname, datetime.now().strftime("%Y-%m-%d"), "대기"])
-                    st.success("✅ 가입 신청 완료! 승인을 기다려주세요.")
+                    st.success("✅ 가입 신청 완료!")
 
 # ----------------------------------------------------
 # [화면 B] 메인 시스템
@@ -191,12 +188,10 @@ else:
         st.rerun()
 
     if not is_approved:
-        st.divider()
         st.warning("⚠️ 계정 승인 대기 중입니다.")
         st.stop()
 
     if uid == ADMIN_ID:
-        st.divider()
         st.markdown("### 🛠️ 관리자 대시보드")
         adm_tab1, adm_tab2 = st.tabs(["👥 회원 관리", "📝 접수 관리"])
         with adm_tab1:
@@ -211,71 +206,36 @@ else:
             if st.button("접수내역 저장"):
                 ws_req.update([edited_req.columns.values.tolist()] + edited_req.values.tolist())
                 st.success("저장 완료!")
-
     else:
-        st.divider()
         st.info(ADMIN_NOTICE)
-        
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
             c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
-            
             c3, c4 = st.columns(2)
             biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력", key="k_biz_no")
-            
-            ind_options = [
-                "건설", "건축(전기/인테리어)", "토목(엔지니어링)", "제조", 
-                "자동차", "항공", "금형", "반도체", "철강", "플랜트", 
-                "스마트공장", "기타", "공공", "서비스"
-            ]
+            ind_options = ["건설", "건축(전기/인테리어)", "토목(엔지니어링)", "제조", "자동차", "항공", "금형", "반도체", "철강", "플랜트", "스마트공장", "기타", "공공", "서비스"]
             industry = c4.selectbox("업종 (필수)", ind_options, key="k_industry")
 
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
-
-            # [⚡ 자동 입력 해결책] 링크를 버튼처럼 만들어서 클릭 유도
             daum_code = """
             <style>
                 .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; font-family: sans-serif; }
-                
-                #btn_link { 
-                    display:none; 
-                    box-sizing: border-box;
-                    width:100%; 
-                    padding:15px; 
-                    margin-top:10px; 
-                    background-color:#2c7a7b; 
-                    color:white; 
-                    text-align:center; 
-                    text-decoration:none; 
-                    border-radius:8px; 
-                    font-size:16px; 
-                    font-weight:bold; 
-                    transition: background 0.2s;
-                    border: 2px solid #234e52;
-                }
+                #btn_link { display:none; box-sizing: border-box; width:100%; padding:15px; margin-top:10px; background-color:#2c7a7b; color:white; text-align:center; text-decoration:none; border-radius:8px; font-size:16px; font-weight:bold; transition: background 0.2s; border: 2px solid #234e52; }
                 #btn_link:hover { background-color:#285e61; }
-                
                 h4 { margin:0 0 10px 0; color:#333; }
             </style>
-            
             <div class="wrap">
                 <h4>🔍 주소 검색</h4>
-                
                 <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
-                
-                <a id="btn_link" href="#" target="_top">
-                    ✅ 주소 입력 완료! (여기를 클릭하세요)
-                </a>
+                <a id="btn_link" href="#" target="_top">✅ 주소 입력 완료! (여기를 클릭하세요)</a>
             </div>
-            
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
                 var btn_link = document.getElementById('btn_link');
-
                 new daum.Postcode({
                     oncomplete: function(data) {
                         var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
@@ -286,40 +246,27 @@ else:
                             if(extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                        
                         element_layer.style.display = 'none';
-                        
                         btn_link.href = "?addr=" + encodeURIComponent(fullAddr);
                         btn_link.style.display = "block";
-                        
                         try { btn_link.click(); } catch(e) {}
                     },
-                    width : '100%',
-                    height : '100%'
+                    width : '100%', height : '100%'
                 }).embed(element_layer);
             </script>
             """
-            
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
                 components.html(daum_code, height=450)
-
             a1, a2 = st.columns([2, 1])
-            addr_full = a1.text_input(
-                "기본 주소 (자동 입력됨)", 
-                value=st.session_state.get('selected_addr', ''),
-                placeholder="검색 후 버튼을 누르면 입력됩니다.",
-                key="k_addr_full"
-            )
+            addr_full = a1.text_input("기본 주소 (자동 입력됨)", value=st.session_state.get('selected_addr', ''), placeholder="검색 후 버튼을 누르면 입력됩니다.", key="k_addr_full")
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
 
             st.markdown("---")
             st.markdown("#### 3. 담당자 정보")
             prod = st.radio("제품 (필수)", ["ZWCAD", "ZW3D"], horizontal=True, key="k_prod")
-            
             m1, m2, m3 = st.columns(3)
             mgr_nm = m1.text_input("담당자명 (필수)", key="k_mgr_nm")
-            # [안내] 연락처 placeholder 변경
-            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="010, 02, 031, 070 모두 가능", key="k_mgr_ph")
+            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="010, 02, 031 등", key="k_mgr_ph")
             mgr_em = m3.text_input("이메일 (필수)", key="k_mgr_em")
 
             st.markdown("---")
@@ -329,38 +276,27 @@ else:
             up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'jpeg', 'pdf'], key="k_file_card")
             
             st.markdown("---")
-            st.caption("※ 수집된 정보는 ZWPortal 등록 대행을 위해 제3자에게 제공되며, 업무 목적 달성 후 파기됩니다.")
             agree = st.checkbox("✅ [필수] 개인정보 수집 및 제3자 제공에 동의합니다.", key="k_agree")
-
             submit_btn = st.form_submit_button("🚀 등록 접수하기", type="primary")
 
             if submit_btn:
                 err_msgs = []
-                # 1. 동의 확인
                 if not agree: err_msgs.append("개인정보 동의가 필요합니다.")
-                
-                # 2. 필수값 체크
                 if not (c_name and c_rep and biz_no_input and addr_full and addr_detail and mgr_nm and mgr_ph_input and mgr_em):
                     err_msgs.append("모든 필수 항목을 입력해주세요.")
-                
-                if not (up_file_biz or up_file_card):
-                    err_msgs.append("사업자등록증 또는 명함 중 하나는 반드시 첨부해야 합니다.")
-
-                # 3. 유효성 체크
-                if biz_no_input and not validate_biz_no(biz_no_input): 
-                    err_msgs.append("사업자번호는 숫자 10자리여야 합니다.")
-                if mgr_ph_input and not validate_phone(mgr_ph_input): 
-                    err_msgs.append("연락처를 확인해주세요 (지역번호, 070 포함 숫자만 입력)")
-                if mgr_em and not validate_email(mgr_em): 
-                    err_msgs.append("이메일 형식이 올바르지 않습니다.")
+                if not (up_file_biz or up_file_card): err_msgs.append("사업자등록증 또는 명함 중 하나는 반드시 첨부해야 합니다.")
+                if biz_no_input and not validate_biz_no(biz_no_input): err_msgs.append("사업자번호는 숫자 10자리여야 합니다.")
+                if mgr_ph_input and not validate_phone(mgr_ph_input): err_msgs.append("연락처 형식을 확인해주세요.")
+                if mgr_em and not validate_email(mgr_em): err_msgs.append("이메일 형식이 올바르지 않습니다.")
 
                 if err_msgs:
                     for msg in err_msgs: st.error(f"❌ {msg}")
                 else:
                     with st.spinner("파일 업로드 및 저장 중..."):
                         try:
-                            link_biz = upload_file(drive, up_file_biz) if up_file_biz else ""
-                            link_card = upload_file(drive, up_file_card) if up_file_card else ""
+                            # 여기서 새로 만든 GAS 업로드 함수를 사용합니다!
+                            link_biz = upload_file_to_gas(up_file_biz) if up_file_biz else ""
+                            link_card = upload_file_to_gas(up_file_card) if up_file_card else ""
                             
                             biz_final = format_biz_no(biz_no_input)
                             ph_final = format_phone(mgr_ph_input)
@@ -368,16 +304,10 @@ else:
                             if len(ws_req.get_all_values()) == 0:
                                 ws_req.append_row(["시간","작성자","고객사","대표자","사업자","업종","주소(전체)","상세주소","제품","담당자","연락처","이메일","파일(사업자)","파일(명함)","상태"])
                             
-                            row = [
-                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                uid, c_name, c_rep, biz_final, industry, addr_full, addr_detail,
-                                prod, mgr_nm, ph_final, mgr_em, 
-                                link_biz, link_card, "대기중"
-                            ]
+                            row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), uid, c_name, c_rep, biz_final, industry, addr_full, addr_detail, prod, mgr_nm, ph_final, mgr_em, link_biz, link_card, "대기중"]
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
-                            
                         except Exception as e:
                             st.error(f"오류: {e}")
 
