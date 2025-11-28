@@ -215,15 +215,18 @@ else:
             st.markdown("#### 2. 주소 정보")
 
 # [수정된 주소 검색 코드] 배경색 흰색 지정 + HTTPS 강제
+            # [수정 버전] 로딩 글자 제거 + 높이 확장 + 디자인 깔끔하게
             daum_code = """
-            <div style="background-color:white; padding:10px; border-radius:10px;">
-                <h4 style="margin-bottom:10px; color:black;">📮 주소 검색</h4>
-                <div id="layer" style="display:block;position:relative;overflow:hidden;z-index:1;-webkit-overflow-scrolling:touch; height:300px; border:1px solid #ccc;">
-                    <p style="text-align:center; padding-top:100px; color:black;">주소 검색창 로딩 중...</p>
+            <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색</h4>
+                
+                <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
                 </div>
-                <div id="msg" style="display:none; color:blue; font-weight:bold; margin-top:10px;">
+                
+                <div id="msg" style="display:none; margin-top:10px; padding:10px; background-color:#e6fffa; color:#006d5b; border-radius:5px; font-weight:bold; border:1px solid #b2f5ea;">
                     ✅ 주소가 복사되었습니다!<br>아래 '기본 주소' 칸에 붙여넣기(Ctrl+V) 하세요.
                 </div>
+                
                 <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
             </div>
             
@@ -246,7 +249,6 @@ else:
                         
                         try {
                             document.execCommand('copy');
-                            // 검색창 닫고 안내문구 표시
                             document.getElementById('layer').style.display = 'none';
                             document.getElementById('msg').style.display = 'block';
                         } catch (err) {
