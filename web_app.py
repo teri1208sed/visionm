@@ -9,10 +9,16 @@ from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
 
 # ==========================================
-# ⚙️ [설정]
+# 🚀 [앱 기본 설정] (가장 먼저 실행되어야 함)
+# ==========================================
+st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
+
+# ==========================================
+# ⚙️ [사용자 설정] - 내용을 꼭 확인하세요!
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
-DRIVE_FOLDER_ID = '여기에_폴더ID를_붙여넣으세요' 
+# 👇 아래 따옴표 안에 구글 드라이브 폴더 ID를 꼭 넣으세요!
+DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz?hl=ko' 
 ADMIN_ID = "admin"
 
 # 👇 [관리자 공지사항] 내용을 여기서 수정하세요!
@@ -22,6 +28,36 @@ ADMIN_NOTICE = """
 2. 주소는 우편번호 검색을 통해 정확하게 입력해주세요.
 3. 입력하신 정보는 ZWPortal 등록 외 다른 용도로 사용되지 않습니다.
 """
+
+# ==========================================
+# ☁️ [구글 서비스 연결] (수정된 부분)
+# ==========================================
+def get_services():
+    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    
+    # 1. Streamlit Cloud Secrets에서 [google_auth] 섹션을 먼저 찾습니다.
+    if "google_auth" in st.secrets:
+        key_dict = dict(st.secrets["google_auth"])
+        creds = Credentials.from_service_account_info(key_dict, scopes=scope)
+    
+    # 2. 만약 Secrets가 없다면 로컬 파일(secrets.json)을 찾습니다. (내 컴퓨터 테스트용)
+    else:
+        try:
+            creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
+        except FileNotFoundError:
+            st.error("🚨 인증 오류: 'secrets.json' 파일도 없고 Streamlit Secrets 설정도 없습니다.")
+            st.stop()
+        
+    gc = gspread.authorize(creds)
+    drive = build('drive', 'v3', credentials=creds)
+    return gc, drive
+
+def upload_file(drive_service, file_obj):
+    if file_obj is None: return ""
+    metadata = {'name': file_obj.name, 'parents': [DRIVE_FOLDER_ID]}
+    media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type)
+    file = drive_service.files().create(body=metadata, media_body=media, fields='webViewLink').execute()
+    return file.get('webViewLink')
 
 # ==========================================
 # 🛡️ [유효성 검사 및 포맷팅]
@@ -47,12 +83,10 @@ def format_phone(num):
     return num
 
 def validate_biz_no(number):
-    # 숫자만 추출해서 10자리인지 확인
     clean = clean_number(number)
     return len(clean) == 10
 
 def validate_phone(number):
-    # 숫자만 추출해서 10~11자리인지 확인 (01로 시작)
     clean = clean_number(number)
     return len(clean) >= 10 and len(clean) <= 11 and clean.startswith("01")
 
@@ -61,32 +95,8 @@ def validate_email(email):
     return re.match(pattern, email) is not None
 
 # ==========================================
-# ☁️ [구글 서비스 연결]
-# ==========================================
-def get_services():
-    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    
-    if "gcp_service_account" in st.secrets:
-        key_dict = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(key_dict, scopes=scope)
-    else:
-        creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
-        
-    gc = gspread.authorize(creds)
-    drive = build('drive', 'v3', credentials=creds)
-    return gc, drive
-
-def upload_file(drive_service, file_obj):
-    if file_obj is None: return ""
-    metadata = {'name': file_obj.name, 'parents': [DRIVE_FOLDER_ID]}
-    media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type)
-    file = drive_service.files().create(body=metadata, media_body=media, fields='webViewLink').execute()
-    return file.get('webViewLink')
-
-# ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
-st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -182,7 +192,7 @@ else:
 
     else:
         st.divider()
-        # [관리자 공지사항 표시] - 사용자는 읽기만 가능
+        # [관리자 공지사항 표시]
         st.info(ADMIN_NOTICE)
         
         with st.form("register_form"):
@@ -192,10 +202,8 @@ else:
             c_rep = c2.text_input("대표자명 (필수)")
             
             c3, c4 = st.columns(2)
-            # 숫자만 입력해도 되도록 안내
             biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력 (예: 1234567890)")
             
-            # 요청하신 업종 리스트 적용
             ind_options = [
                 "건설", "건축(전기/인테리어)", "토목(엔지니어링)", "제조", 
                 "자동차", "항공", "금형", "반도체", "철강", "플랜트", 
@@ -206,7 +214,6 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # 다음 우편번호 서비스
             daum_code = """
             <div id="layer" style="display:block;position:relative;overflow:hidden;z-index:1;-webkit-overflow-scrolling:touch;"></div>
             <div id="msg" style="display:none; color:blue; font-weight:bold; margin-top:5px;">✅ 주소가 복사되었습니다! 아래 칸에 붙여넣기(Ctrl+V) 하세요.</div>
@@ -255,14 +262,11 @@ else:
             mgr_em = m3.text_input("이메일 (필수)")
 
             st.markdown("---")
-            # [수정] 파일 업로드 섹션: 명함 추가, 둘 중 하나 필수
             st.markdown("#### 4. 첨부파일 (둘 중 하나 필수)")
             col_f1, col_f2 = st.columns(2)
             up_file_biz = col_f1.file_uploader("사업자등록증", type=['png', 'jpg', 'jpeg', 'pdf'])
             up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'jpeg', 'pdf'])
             
-            # 특이사항 입력란은 삭제됨
-
             st.markdown("---")
             st.caption("※ 수집된 정보는 ZWPortal 등록 대행을 위해 제3자에게 제공되며, 업무 목적 달성 후 파기됩니다.")
             agree = st.checkbox("✅ [필수] 개인정보 수집 및 제3자 제공에 동의합니다.")
@@ -274,7 +278,7 @@ else:
                 # 1. 동의 확인
                 if not agree: err_msgs.append("개인정보 동의가 필요합니다.")
                 
-                # 2. 필수값 체크 (파일은 둘 중 하나만 있으면 됨)
+                # 2. 필수값 체크
                 if not (c_name and c_rep and biz_no_input and addr_full and addr_detail and mgr_nm and mgr_ph_input and mgr_em):
                     err_msgs.append("모든 필수 항목을 입력해주세요.")
                 
@@ -294,11 +298,9 @@ else:
                 else:
                     with st.spinner("파일 업로드 및 저장 중..."):
                         try:
-                            # 파일 업로드 (있으면 링크, 없으면 빈값)
                             link_biz = upload_file(drive, up_file_biz) if up_file_biz else ""
                             link_card = upload_file(drive, up_file_card) if up_file_card else ""
                             
-                            # 포맷팅 (숫자만 입력된걸 하이픈 넣어서 저장)
                             biz_final = format_biz_no(biz_no_input)
                             ph_final = format_phone(mgr_ph_input)
                             
