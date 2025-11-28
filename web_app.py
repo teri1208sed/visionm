@@ -5,6 +5,7 @@ import re
 import requests 
 import base64   
 import json
+import os # 파일 확장자 추출용 모듈
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -21,8 +22,8 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 ADMIN_ID = "admin"
 
-# 👇 [중요] 아까 만드신 '구글 앱스 스크립트(GAS) 배포 주소'를 여기에 넣으세요!
-# (주소 끝이 /exec 로 끝나야 합니다)
+# 👇 [중요] 구글 앱스 스크립트(GAS) 배포 주소를 여기에 넣으세요!
+# 주소는 반드시 https://.../exec 로 끝나야 합니다.
 GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
 
 ADMIN_NOTICE = """
@@ -33,10 +34,9 @@ ADMIN_NOTICE = """
 """
 
 # ==========================================
-# ☁️ [구글 시트 연결] (수정됨: 드라이브 권한 복구)
+# ☁️ [구글 시트 연결]
 # ==========================================
 def get_services():
-    # [수정] 스프레드시트를 이름으로 찾으려면 'drive' 권한이 필수입니다. 다시 추가했습니다.
     scope = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
@@ -55,30 +55,37 @@ def get_services():
     gc = gspread.authorize(creds)
     return gc
 
-# 🔥 로봇 대신 GAS(앱스 스크립트)로 파일을 보내는 함수
-def upload_file_to_gas(file_obj):
+# 🔥 [핵심 수정] 파일명을 '고객사명_종류' 형식으로 변경하여 GAS로 전송
+def upload_file_to_gas(file_obj, custom_name_prefix):
     if file_obj is None: return ""
     
     try:
-        # 1. 파일을 문자열(Base64)로 변환
+        # 1. 원본 파일의 확장자(.png, .jpg 등)만 추출
+        _, file_extension = os.path.splitext(file_obj.name)
+        
+        # 2. 새로운 파일명 조합 (대괄호 없이 깔끔하게)
+        # 예: "비전엠1" + "_사업자등록증" + ".jpg" -> "비전엠1_사업자등록증.jpg"
+        new_filename = f"{custom_name_prefix}{file_extension}"
+        
+        # 3. 파일을 문자열(Base64)로 변환
         content = file_obj.getvalue()
         b64_data = base64.b64encode(content).decode('utf-8')
         
-        # 2. 보낼 데이터 포장
+        # 4. 데이터 전송 준비
         payload = {
-            'fileName': file_obj.name,
+            'fileName': new_filename, 
             'mimeType': file_obj.type,
             'fileData': b64_data
         }
         
-        # 3. 우체국(GAS)으로 발송
+        # 5. GAS(우체국)로 발송
         response = requests.post(
             GAS_URL, 
             data=json.dumps(payload),
             headers={'Content-Type': 'application/json'}
         )
         
-        # 4. 결과 확인
+        # 6. 결과 처리
         res_data = response.json()
         if res_data.get('result') == 'success':
             return res_data['url']
@@ -117,6 +124,10 @@ def validate_phone(number):
     c = clean_number(number)
     return c.startswith("0") and (9 <= len(c) <= 11)
 def validate_email(email): return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email) is not None
+
+# [영어 입력 방지 함수]
+def has_english_char(text):
+    return bool(re.search(r'[a-zA-Z]', str(text)))
 
 # ==========================================
 # 🚀 [앱 메인 로직]
@@ -215,7 +226,8 @@ else:
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            c_name = c1.text_input("고객사명 (필수)", placeholder="(주)비전엠", key="k_c_name")
+            # 영어 입력 방지 안내 문구
+            c_name = c1.text_input("고객사명 (필수)", placeholder="예: 비전엠1 (영어 불가)", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             c3, c4 = st.columns(2)
             biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력", key="k_biz_no")
@@ -262,7 +274,7 @@ else:
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
                 components.html(daum_code, height=450)
             a1, a2 = st.columns([2, 1])
-            addr_full = a1.text_input("기본 주소 (자동 입력됨)", value=st.session_state.get('selected_addr', ''), placeholder="검색 후 버튼을 누르면 입력됩니다.", key="k_addr_full")
+            addr_full = a1.text_input("기본 주소 (자동 입력됨)", value=st.session_state.get('selected_addr', ''), placeholder="검색 후 직접 복사/붙여넣기해야합니다.", key="k_addr_full")
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
 
             st.markdown("---")
@@ -270,7 +282,7 @@ else:
             prod = st.radio("제품 (필수)", ["ZWCAD", "ZW3D"], horizontal=True, key="k_prod")
             m1, m2, m3 = st.columns(3)
             mgr_nm = m1.text_input("담당자명 (필수)", key="k_mgr_nm")
-            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="010, 02, 031 등", key="k_mgr_ph")
+            mgr_ph_input = m2.text_input("연락처 (필수)", placeholder="", key="k_mgr_ph")
             mgr_em = m3.text_input("이메일 (필수)", key="k_mgr_em")
 
             st.markdown("---")
@@ -292,15 +304,20 @@ else:
                 if biz_no_input and not validate_biz_no(biz_no_input): err_msgs.append("사업자번호는 숫자 10자리여야 합니다.")
                 if mgr_ph_input and not validate_phone(mgr_ph_input): err_msgs.append("연락처 형식을 확인해주세요.")
                 if mgr_em and not validate_email(mgr_em): err_msgs.append("이메일 형식이 올바르지 않습니다.")
+                
+                # [영어 입력 방지]
+                if has_english_char(c_name):
+                    err_msgs.append("고객사명에 영어가 포함되어 있습니다. 한글이나 숫자로 입력해주세요.")
 
                 if err_msgs:
                     for msg in err_msgs: st.error(f"❌ {msg}")
                 else:
                     with st.spinner("파일 업로드 및 저장 중..."):
                         try:
-                            # 여기서 새로 만든 GAS 업로드 함수를 사용합니다!
-                            link_biz = upload_file_to_gas(up_file_biz) if up_file_biz else ""
-                            link_card = upload_file_to_gas(up_file_card) if up_file_card else ""
+                            # [파일명 자동 변경: 대괄호 없이 깔끔하게]
+                            # 예: c_name이 "비전엠" -> "비전엠_사업자등록증.jpg"
+                            link_biz = upload_file_to_gas(up_file_biz, f"{c_name}_사업자등록증") if up_file_biz else ""
+                            link_card = upload_file_to_gas(up_file_card, f"{c_name}_명함") if up_file_card else ""
                             
                             biz_final = format_biz_no(biz_no_input)
                             ph_final = format_phone(mgr_ph_input)
