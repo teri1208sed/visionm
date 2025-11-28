@@ -9,7 +9,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
 
 # ==========================================
-# 🚀 [앱 기본 설정]
+# 🚀 [앱 기본 설정] (반드시 맨 위에 있어야 함)
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
@@ -18,8 +18,8 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 
-# 👇 [중요] 아래 따옴표 안에 구글 드라이브 폴더 ID를 꼭 다시 넣어주세요!
-DRIVE_FOLDER_ID = '여기에_폴더ID를_붙여넣으세요' 
+# 👇 [요청하신 구글 드라이브 ID 적용 완료]
+DRIVE_FOLDER_ID = '1GuCFzdHVw-THrXYvBFDnH5z3m5xz05rz'
 ADMIN_ID = "admin"
 
 ADMIN_NOTICE = """
@@ -35,9 +35,11 @@ ADMIN_NOTICE = """
 def get_services():
     scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     
+    # 1. Streamlit Cloud Secrets 우선 확인
     if "google_auth" in st.secrets:
         key_dict = dict(st.secrets["google_auth"])
         creds = Credentials.from_service_account_info(key_dict, scopes=scope)
+    # 2. 로컬 secrets.json 확인 (테스트용)
     else:
         try:
             creds = Credentials.from_service_account_file('secrets.json', scopes=scope)
@@ -51,6 +53,7 @@ def get_services():
 
 def upload_file(drive_service, file_obj):
     if file_obj is None: return ""
+    # 구글 드라이브 업로드 로직
     metadata = {'name': file_obj.name, 'parents': [DRIVE_FOLDER_ID]}
     media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type)
     file = drive_service.files().create(body=metadata, media_body=media, fields='webViewLink').execute()
@@ -91,6 +94,13 @@ def validate_email(email):
 # ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
+
+# 👇 [핵심] URL 쿼리 파라미터 낚아채기 (자동 입력용)
+# 주소창에 ?addr=... 가 있으면 가져와서 session_state에 저장
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    # 무한 새로고침 방지를 위해 URL 파라미터 청소
+    st.query_params.clear()
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -160,6 +170,7 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
+        st.session_state['selected_addr'] = None 
         st.rerun()
 
     if not is_approved:
@@ -207,23 +218,38 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [안정 버전] 주소 클릭 시 복사 후 안내 메시지 표시 (배포 환경 호환)
+            # [🔥 초강력 버전] 자동 입력 + 복사 동시 지원 스크립트
+            # 작동 원리: 
+            # 1. 주소를 선택하면 '확인' 버튼이 뜸 (사용자 클릭 유도 -> 브라우저 보안 통과)
+            # 2. 버튼 클릭 시 -> 클립보드 복사(navigator.clipboard) + URL 이동(window.top.location) 동시 실행
             daum_code = """
-            <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색</h4>
-                <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
-                </div>
+            <style>
+                .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; }
+                .btn-confirm { 
+                    display:none; width:100%; padding:15px; margin-top:10px; 
+                    background:#2c7a7b; color:white; border:none; border-radius:8px; 
+                    font-size:16px; font-weight:bold; cursor:pointer; 
+                }
+                .btn-confirm:hover { background:#285e61; }
+            </style>
+            
+            <div class="wrap">
+                <h4 style="margin:0 0 10px 0; color:#333;">🔍 주소 검색</h4>
+                <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
                 
-                <div id="msg" style="display:none; margin-top:10px; padding:15px; background-color:#e6fffa; color:#006d5b; border-radius:5px; border:1px solid #b2f5ea; text-align:center;">
-                    <h3 style="margin:0; color:#2c7a7b;">✅ 주소 복사 완료!</h3>
-                    <p style="margin:5px 0 0 0;">아래 <b>'기본 주소'</b> 칸을 클릭하고<br>키보드의 <b style="color:red; background-color:yellow;">[Ctrl + V]</b>를 눌러주세요.</p>
-                </div>
-                
-                <textarea id="copy_area" style="position:absolute; left:-9999px;"></textarea>
+                <!-- 확인 버튼: 주소 선택 시 나타남 -->
+                <button id="btnConfirm" class="btn-confirm" onclick="executeAutoFill()">
+                    ✅ 이 주소로 입력하기 (클릭)
+                </button>
             </div>
             
-            <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+            <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
+                var selectedAddr = ""; // 선택한 주소 저장용
+                
+                var element_layer = document.getElementById('layer');
+                var btn = document.getElementById('btnConfirm');
+
                 new daum.Postcode({
                     oncomplete: function(data) {
                         var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
@@ -233,34 +259,46 @@ else:
                             if(data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
                             if(extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
                         }
-                        var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        var copyText = document.getElementById("copy_area");
-                        copyText.value = fullAddr;
-                        copyText.select();
+                        selectedAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        try {
-                            document.execCommand('copy');
-                            document.getElementById('layer').style.display = 'none';
-                            document.getElementById('msg').style.display = 'block';
-                        } catch (err) {
-                            alert('주소: ' + fullAddr + '\\n직접 복사해서 사용하세요.');
-                        }
+                        // 주소를 선택하면 지도 숨기고 버튼을 보여줌
+                        element_layer.style.display = 'none';
+                        btn.style.display = 'block';
+                        btn.innerText = "✅ '" + selectedAddr + "' 입력하기 (클릭)";
                     },
                     width : '100%',
                     height : '100%'
-                }).embed(document.getElementById('layer'));
+                }).embed(element_layer);
+
+                // 버튼 클릭 시 실행되는 함수 (복사 + 자동이동)
+                function executeAutoFill() {
+                    // 1. 클립보드에 복사 시도 (최신 방식)
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(selectedAddr);
+                    }
+                    
+                    // 2. 부모창(앱) URL 변경하여 자동 입력 시도
+                    try {
+                        // target="_parent" 대신 window.top을 사용하여 강력하게 이동
+                        window.top.location.href = '?addr=' + encodeURIComponent(selectedAddr);
+                    } catch(e) {
+                        // 만약 보안상 막히면 경고창 띄우기
+                        alert("자동 입력이 차단되었습니다.\\n방금 주소가 복사되었으니 [Ctrl+V]로 붙여넣어주세요!");
+                    }
+                }
             </script>
             """
             
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=450)
+                components.html(daum_code, height=480)
 
             a1, a2 = st.columns([2, 1])
-            # 사용자에게 붙여넣기를 유도하는 안내 문구
+            # 자동 입력된 값을 보여주고, 실패 시 붙여넣기 유도
             addr_full = a1.text_input(
-                "기본 주소 (여기를 클릭하고 Ctrl+V)", 
-                placeholder="[12345] 서울시... (복사된 주소를 붙여넣으세요)",
+                "기본 주소 (자동 입력됨)", 
+                value=st.session_state.get('selected_addr', ''),
+                placeholder="검색하면 자동으로 입력됩니다. (안되면 Ctrl+V)",
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
@@ -329,6 +367,7 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
+                            
                         except Exception as e:
                             st.error(f"오류: {e}")
 
