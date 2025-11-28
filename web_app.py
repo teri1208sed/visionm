@@ -216,19 +216,55 @@ else:
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
-            # [🔥🔥 자동 입력 최종 솔루션] 
-            # target='_top'을 사용하여 iframe을 뚫고 최상위 페이지를 새로고침하며 데이터를 전달합니다.
+            # [⚡ 최종 해결책] 링크(a 태그)를 버튼처럼 꾸며서 클릭 유도
+            # 사용자가 이 버튼을 '직접' 클릭하면 브라우저는 보안 경고 없이 페이지를 이동시킵니다.
             daum_code = """
-            <div style="background-color:white; padding:15px; border-radius:10px; border:1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h4 style="margin:0 0 10px 0; color:#333; font-size:16px; font-weight:bold;">🔍 주소 검색 (클릭 시 자동 입력)</h4>
-                <div id="layer" style="display:block; position:relative; overflow:hidden; z-index:1; -webkit-overflow-scrolling:touch; height:400px; width:100%; border:1px solid #eee;">
-                </div>
+            <style>
+                .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; font-family: sans-serif; }
+                
+                /* 진짜 버튼처럼 생긴 링크 스타일 */
+                #btn_link { 
+                    display:none; 
+                    box-sizing: border-box;
+                    width:100%; 
+                    padding:15px; 
+                    margin-top:10px; 
+                    background-color:#2c7a7b; 
+                    color:white; 
+                    text-align:center; 
+                    text-decoration:none; 
+                    border-radius:8px; 
+                    font-size:16px; 
+                    font-weight:bold; 
+                    transition: background 0.2s;
+                    border: 2px solid #234e52;
+                }
+                #btn_link:hover { background-color:#285e61; }
+                
+                h4 { margin:0 0 10px 0; color:#333; }
+            </style>
+            
+            <div class="wrap">
+                <h4>🔍 주소 검색</h4>
+                
+                <!-- 1. 주소 검색창 (처음엔 보임) -->
+                <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
+                
+                <!-- 2. 주소 입력 확정 버튼 (검색 후 보임) -->
+                <!-- 주의: 이것은 button이 아니라 a(링크) 태그입니다. -->
+                <a id="btn_link" href="#" target="_top">
+                    ✅ 주소 입력 완료! (여기를 클릭하세요)
+                </a>
             </div>
             
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
+                var element_layer = document.getElementById('layer');
+                var btn_link = document.getElementById('btn_link');
+
                 new daum.Postcode({
                     oncomplete: function(data) {
+                        // 주소 데이터 조합
                         var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
                         var extraAddr = '';
                         if(data.userSelectedType === 'R'){
@@ -238,17 +274,20 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [핵심 기술] 부모 창(Streamlit)을 강제로 이동시키는 링크 생성 및 클릭
-                        // _top 타겟을 써야 iframe 밖으로 나갈 수 있습니다.
-                        var link = document.createElement('a');
-                        link.href = '?addr=' + encodeURIComponent(fullAddr);
-                        link.target = '_top'; 
-                        document.body.appendChild(link);
-                        link.click();
+                        // [핵심] 지도 숨기고, 버튼(링크)에 주소 파라미터 심기
+                        element_layer.style.display = 'none';
+                        
+                        // 사용자가 클릭할 링크의 주소를 동적으로 생성
+                        // target="_top"이 있어서 클릭 시 앱이 새로고침되며 데이터가 전달됨
+                        btn_link.href = "?addr=" + encodeURIComponent(fullAddr);
+                        btn_link.style.display = "block";
+                        
+                        // (선택사항) 가능한 경우 자동 클릭 시도 (보안 강한 브라우저는 무시함)
+                        try { btn_link.click(); } catch(e) {}
                     },
                     width : '100%',
                     height : '100%'
-                }).embed(document.getElementById('layer'));
+                }).embed(element_layer);
             </script>
             """
             
@@ -256,12 +295,11 @@ else:
                 components.html(daum_code, height=450)
 
             a1, a2 = st.columns([2, 1])
-            
-            # 여기서 session_state에 저장된 주소를 자동으로 띄워줍니다.
+            # 자동 입력된 값을 보여줍니다.
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 value=st.session_state.get('selected_addr', ''),
-                placeholder="위에서 검색하면 자동으로 입력됩니다.",
+                placeholder="검색 후 버튼을 누르면 입력됩니다.",
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
