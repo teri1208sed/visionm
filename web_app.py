@@ -237,14 +237,41 @@ else:
 
     if uid == ADMIN_ID:
         st.markdown("### 🛠️ 관리자 대시보드")
-        adm_tab1, adm_tab2 = st.tabs(["👥 회원 관리", "📝 접수 관리"])
+        adm_tab1, adm_tab2 = st.tabs(["👥 회원 관리 (승인)", "📝 접수 대장 관리"])
+        
         with adm_tab1:
+            st.info("💡 '첨부파일' 링크를 클릭해 확인 후, '승인여부'를 '대기' ➝ '승인'으로 변경하고 저장하세요.")
+            
+            # users 시트 데이터 가져오기
             u_df = pd.DataFrame(ws_user.get_all_records())
-            edited_users = st.data_editor(u_df, num_rows="dynamic", key="uedit")
-            if st.button("회원 저장"):
+            
+            # [기능 업그레이드] 데이터 에디터 설정 (링크 클릭 가능하게)
+            edited_users = st.data_editor(
+                u_df,
+                num_rows="dynamic",
+                key="uedit",
+                column_config={
+                    "첨부파일": st.column_config.LinkColumn(
+                        "증빙서류", 
+                        help="클릭하면 이미지가 열립니다", 
+                        display_text="보기" # URL 대신 '보기'라는 글자로 표시됨
+                    ),
+                    "승인여부": st.column_config.SelectboxColumn(
+                        "승인여부",
+                        options=["대기", "승인", "거절"],
+                        required=True
+                    )
+                }
+            )
+            
+            if st.button("회원 정보 저장"):
+                # 변경된 내용 구글 시트에 업데이트
                 ws_user.update([edited_users.columns.values.tolist()] + edited_users.values.tolist())
-                st.success("저장 완료!")
+                st.success("✅ 회원 정보가 저장되었습니다!")
+                st.rerun()
+
         with adm_tab2:
+            # 접수 대장 관리 (기존 동일)
             r_df = pd.DataFrame(ws_req.get_all_records())
             edited_req = st.data_editor(r_df, num_rows="dynamic", key="redit")
             if st.button("접수내역 저장"):
