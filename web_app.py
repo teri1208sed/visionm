@@ -173,19 +173,48 @@ if not st.session_state['user_id']:
                     st.rerun()
             if not found: st.error("정보가 일치하지 않습니다.")
     with tab2:
-        st.info("관리자의 승인 후 로그인이 가능합니다.")
+        st.subheader("📝 파트너사 가입 신청")
+        st.info("관리자 승인 후 로그인이 가능합니다.")
+        
+        # [안전] 비밀번호 경고 문구
+        st.warning("⚠️ 보안을 위해 금융/포털 등에서 사용하는 중요 비밀번호는 피해주세요.")
+        
         nid = st.text_input("희망 아이디", key="join_id")
         npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
         nname = st.text_input("업체명 (이름)", key="join_name")
+        
+        # [추가] 파일 업로더
+        st.markdown("---")
+        st.write("📂 **사업자등록증 또는 명함 첨부 (필수)**")
+        join_file = st.file_uploader("증빙 서류 (이미지/PDF)", type=['png', 'jpg', 'jpeg', 'pdf'], key="join_file_upload")
+
         if st.button("가입 신청"):
-            if not (nid and npw and nname): st.error("모든 항목을 입력해주세요.")
+            if not (nid and npw and nname and join_file):
+                st.error("모든 정보를 입력하고 파일을 첨부해주세요.")
             else:
                 existing = ws_user.col_values(1)
-                if nid in existing: st.error("이미 사용 중인 아이디입니다.")
+                if nid in existing:
+                    st.error("이미 존재하는 아이디입니다.")
                 else:
-                    if len(ws_user.get_all_values()) == 0: ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부"])
-                    ws_user.append_row([nid, npw, nname, datetime.now().strftime("%Y-%m-%d"), "대기"])
-                    st.success("✅ 가입 신청 완료!")
+                    with st.spinner("가입 서류 업로드 중..."):
+                        # 1. 파일 업로드 (GAS) -> 링크 생성
+                        file_link = upload_file_to_gas(join_file, f"PARTNER_{nid}")
+                        
+                        # 2. 시트가 비어있다면 헤더 자동 생성 (혹시 모를 대비)
+                        if len(ws_user.get_all_values()) == 0:
+                            ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부", "첨부파일"])
+                        
+                        # 3. users 시트에 저장 (상태: 대기, 맨 뒤에 파일 링크 추가)
+                        ws_user.append_row([
+                            nid, 
+                            npw, 
+                            nname, 
+                            datetime.now().strftime("%Y-%m-%d"), 
+                            "대기", 
+                            file_link  # F열에 저장됨
+                        ])
+                        
+                        st.success("✅ 가입 신청이 완료되었습니다! 관리자 승인 대기 중입니다.")
 
 # ----------------------------------------------------
 # [화면 B] 메인 시스템
