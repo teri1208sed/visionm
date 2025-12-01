@@ -17,14 +17,17 @@ from datetime import datetime
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
 # ------------------------------------------
-# [핵심 로직] URL 파라미터로 넘어온 주소값 처리
+# [수정됨] URL 파라미터로 넘어온 주소값을 입력창 Key에 강제 주입
 # ------------------------------------------
+# 주소 검색 후 리로드되어 돌아왔을 때, URL 파라미터('addr')를 확인
 if "addr" in st.query_params:
-    st.session_state['selected_addr'] = st.query_params["addr"]
-    st.query_params.clear() # 주소창의 지저분한 파라미터 제거
+    # text_input의 key인 'k_addr_full'에 직접 값을 넣어버림 (가장 확실한 방법)
+    st.session_state['k_addr_full'] = st.query_params["addr"]
+    st.query_params.clear() # 주소창 정리
 
-if 'selected_addr' not in st.session_state:
-    st.session_state['selected_addr'] = ''
+# key 초기화 (에러 방지용)
+if 'k_addr_full' not in st.session_state:
+    st.session_state['k_addr_full'] = ''
 
 # ==========================================
 # ⚙️ [사용자 설정]
@@ -209,7 +212,8 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        st.session_state['selected_addr'] = '' 
+        # 로그아웃 시 세션 값도 정리
+        if 'k_addr_full' in st.session_state: del st.session_state['k_addr_full']
         st.rerun()
 
     if not is_approved:
@@ -251,7 +255,7 @@ else:
         st.info(ADMIN_NOTICE)
         
         # ---------------------------------------------------------
-        # [수정] 입력 폼 시작 (st.form)
+        # [입력 폼 시작]
         # ---------------------------------------------------------
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
@@ -268,7 +272,7 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정] 자바스크립트: 주소 선택 시 URL 파라미터로 값 전달
+            # [수정됨] 자바스크립트: 주소 선택 시 부모창 리로드 및 파라미터 전달
             # -----------------------------------------------------
             daum_code = """
             <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
@@ -289,8 +293,8 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // 현재 페이지 URL에 addr 파라미터를 추가하여 부모창 리로드
-                        var currentUrl = window.parent.location.href.split('?')[0];
+                        // 현재 URL을 가져와서(쿼리 제거) addr 파라미터를 붙여 리로드
+                        var currentUrl = window.parent.location.origin + window.parent.location.pathname;
                         window.parent.location.href = currentUrl + "?addr=" + encodeURIComponent(fullAddr);
                     },
                     width : '100%',
@@ -305,10 +309,9 @@ else:
             
             a1, a2 = st.columns([2, 1])
             
-            # [수정] value에 session_state 값을 바인딩하여 자동 입력 구현
+            # [수정됨] value 속성을 제거하고 key만 남김 (상단에서 session_state에 값을 넣었으므로 자동 표기됨)
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
-                value=st.session_state['selected_addr'], 
                 placeholder="위 검색창에서 주소를 선택하세요.", 
                 key="k_addr_full"
             )
@@ -364,8 +367,9 @@ else:
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
                             
-                            # 성공 후 주소 초기화
-                            st.session_state['selected_addr'] = ''
+                            # 성공 후 세션 주소 초기화
+                            if 'k_addr_full' in st.session_state:
+                                st.session_state['k_addr_full'] = ''
                             
                         except Exception as e:
                             st.error(f"오류: {e}")
@@ -375,7 +379,6 @@ else:
         rows = ws_req.get_all_records()
         if rows:
             df = pd.DataFrame(rows)
-            # 데이터프레임 필터링 안전 장치
             if '작성자' in df.columns:
                 st.dataframe(df[df['작성자'].astype(str) == uid])
             else:
