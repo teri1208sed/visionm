@@ -17,15 +17,17 @@ from datetime import datetime
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
 # ------------------------------------------
-# [수정됨] URL 파라미터로 넘어온 주소값을 입력창 Key에 강제 주입
+# [핵심 로직] URL 파라미터 감지 및 세션 주입 (수정됨)
 # ------------------------------------------
-# 주소 검색 후 리로드되어 돌아왔을 때, URL 파라미터('addr')를 확인
+# 1. URL에 addr 파라미터가 있는지 확인
 if "addr" in st.query_params:
-    # text_input의 key인 'k_addr_full'에 직접 값을 넣어버림 (가장 확실한 방법)
-    st.session_state['k_addr_full'] = st.query_params["addr"]
-    st.query_params.clear() # 주소창 정리
+    addr_value = st.query_params["addr"]
+    # 2. 주소 입력창의 Key('k_addr_full')에 값을 강제로 주입
+    st.session_state['k_addr_full'] = addr_value
+    # 3. 처리가 끝났으므로 URL 파라미터 청소 (새로고침 시 재실행 방지)
+    st.query_params.clear()
 
-# key 초기화 (에러 방지용)
+# 4. 세션 초기화 (키 에러 방지)
 if 'k_addr_full' not in st.session_state:
     st.session_state['k_addr_full'] = ''
 
@@ -212,8 +214,9 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        # 로그아웃 시 세션 값도 정리
-        if 'k_addr_full' in st.session_state: del st.session_state['k_addr_full']
+        # 로그아웃 시 세션값도 정리
+        if 'k_addr_full' in st.session_state:
+            st.session_state['k_addr_full'] = ''
         st.rerun()
 
     if not is_approved:
@@ -272,7 +275,7 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] 자바스크립트: 주소 선택 시 부모창 리로드 및 파라미터 전달
+            # [수정됨] 자바스크립트: URL 객체를 사용한 안전한 파라미터 전달
             # -----------------------------------------------------
             daum_code = """
             <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
@@ -293,9 +296,17 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // 현재 URL을 가져와서(쿼리 제거) addr 파라미터를 붙여 리로드
-                        var currentUrl = window.parent.location.origin + window.parent.location.pathname;
-                        window.parent.location.href = currentUrl + "?addr=" + encodeURIComponent(fullAddr);
+                        // [핵심 수정] 자바스크립트 URL 객체를 사용하여 안전하게 파라미터 주입
+                        // 기존 URL의 파라미터를 유지하면서 addr만 추가/변경합니다.
+                        try {
+                            var parentUrl = new URL(window.parent.location.href);
+                            parentUrl.searchParams.set('addr', fullAddr);
+                            window.parent.location.href = parentUrl.toString();
+                        } catch(e) {
+                            // URL 객체 사용 불가 시 백업 (오류 방지)
+                            console.error(e);
+                            window.parent.location.href = "?addr=" + encodeURIComponent(fullAddr);
+                        }
                     },
                     width : '100%',
                     height : '100%',
@@ -309,7 +320,7 @@ else:
             
             a1, a2 = st.columns([2, 1])
             
-            # [수정됨] value 속성을 제거하고 key만 남김 (상단에서 session_state에 값을 넣었으므로 자동 표기됨)
+            # [수정됨] value 제거 -> session_state['k_addr_full']이 값을 지배함
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 placeholder="위 검색창에서 주소를 선택하세요.", 
