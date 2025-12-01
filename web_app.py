@@ -231,13 +231,48 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] 자바스크립트: 'a' 태그 클릭 시뮬레이션으로 보안 차단 완벽 우회
+            # [수정됨] 자바스크립트: '확인 버튼'을 통한 강력한 보안 우회 (Nuclear Option)
             # -----------------------------------------------------
             daum_code = f"""
-            <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
+            <style>
+                #confirm-btn {{
+                    display: none;
+                    width: 100%;
+                    height: 100%;
+                    background-color: #4CAF50;
+                    color: white;
+                    font-size: 20px;
+                    font-weight: bold;
+                    border: none;
+                    cursor: pointer;
+                    text-align: center;
+                    position: absolute;
+                    top: 0; left: 0;
+                    z-index: 9999;
+                }}
+                #confirm-btn:hover {{ background-color: #45a049; }}
+            </style>
+            
+            <div id="wrapper" style="width:100%; height:400px; position:relative;">
+                <div id="layer" style="display:block; width:100%; height:100%; border:1px solid #333;"></div>
+                <button id="confirm-btn" onclick="applyAddress()">
+                    ✅ 주소 선택 완료!<br><br>여기를 클릭하여 적용하세요.
+                </button>
+            </div>
+            
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
+                var confirmBtn = document.getElementById('confirm-btn');
+                var finalUrl = "";
+
+                // [중요] 사용자가 버튼을 클릭했을 때만 이동 (보안 차단 회피)
+                function applyAddress() {{
+                    if(finalUrl) {{
+                        window.top.location.href = finalUrl;
+                    }}
+                }}
+
                 new daum.Postcode({{
                     oncomplete: function(data) {{
                         var addr = ''; 
@@ -253,14 +288,12 @@ else:
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
                         var targetBase = "{APP_BASE_URL}";
-                        var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
+                        finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
                         
-                        // [핵심] window.open 대신 '링크 클릭'을 가장하여 브라우저 보안을 우회합니다.
-                        var link = document.createElement('a');
-                        link.href = finalUrl;
-                        link.target = '_top'; // 최상위 창에서 열기
-                        document.body.appendChild(link);
-                        link.click();
+                        // [핵심] 자동으로 이동하려 하지 말고, 화면을 가리는 버튼을 띄웁니다.
+                        // 사용자가 이 버튼을 클릭하면 '사용자 의도'로 간주되어 100% 이동됩니다.
+                        element_layer.style.display = 'none';
+                        confirmBtn.style.display = 'block';
                     }},
                     width : '100%',
                     height : '100%',
@@ -274,7 +307,6 @@ else:
             
             a1, a2 = st.columns([2, 1])
             
-            # [Key 바인딩] 상단의 session_state['k_addr_full'] 값이 여기에 표시됨
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 placeholder="위 검색창에서 주소를 선택하세요.", 
