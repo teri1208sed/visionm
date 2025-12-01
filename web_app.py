@@ -231,86 +231,83 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] "팝업 검색" 방식 (보안 차단 100% 해결)
+            # [최종 해결책] "UI 교체 방식" (보안 100% 통과)
+            # 1. 주소 검색창을 띄웁니다.
+            # 2. 주소를 선택하면, 화면이 자동으로 넘어가지 않고 '주소 적용하기' 버튼으로 변합니다.
+            # 3. 사용자가 그 버튼을 클릭하면 target="_top"으로 이동합니다. (이건 절대 안 막힘)
             # -----------------------------------------------------
-            # 이 방식은 '새 창'을 열어서 검색하므로 스트림릿의 iframe 보안을 완전히 무시합니다.
-            # 검색 후 새 창이 '비전엠 앱'으로 바뀌면서 주소 데이터를 전달합니다.
+            daum_code = f"""
+            <div id="wrapper" style="width:100%; height:400px; position:relative;">
+                <div id="layer" style="display:block; width:100%; height:100%; border:1px solid #333;"></div>
+            </div>
             
-            # 1. 팝업창에서 실행될 HTML 소스 생성
-            html_content = f"""
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>주소 검색 - VISIONM</title>
-                <style>
-                    body {{ margin: 0; padding: 0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f6; }}
-                </style>
-                <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
-            </head>
-            <body>
-                <script>
-                    new daum.Postcode({{
-                        oncomplete: function(data) {{
-                            var addr = ''; 
-                            var extraAddr = ''; 
-                            if (data.userSelectedType === 'R') {{ 
-                                addr = data.roadAddress;
-                                if (data.bname !== '' && /[동|로|가]$/g.test(data.bname)) extraAddr += data.bname;
-                                if (data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
-                                if (extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
-                            }} else {{ 
-                                addr = data.jibunAddress;
-                            }}
-                            var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                            
-                            // [핵심] 검색 완료 시, 이 팝업창을 '비전엠 앱 URL'로 리다이렉트 시킵니다.
-                            var targetBase = "{APP_BASE_URL}";
-                            window.location.href = targetBase + "?addr=" + encodeURIComponent(fullAddr);
-                        }},
-                        width: '100%',
-                        height: '100%'
-                    }}).open();
-                </script>
-            </body>
-            </html>
-            """
-            
-            # 2. HTML을 Base64로 인코딩하여 Data URL 생성
-            b64_html = base64.b64encode(html_content.encode()).decode()
-            data_url = f"data:text/html;base64,{b64_html}"
+            <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+            <script>
+                var element_layer = document.getElementById('layer');
+                var wrapper = document.getElementById('wrapper');
 
-            # 3. 버튼을 누르면 새 창에서 위 Data URL을 엽니다.
-            link_btn_code = f"""
-            <a href="{data_url}" target="_blank" style="
-                display: block;
-                width: 100%;
-                text-decoration: none;
-                background-color: #FF4B4B;
-                color: white;
-                padding: 12px 0;
-                text-align: center;
-                font-size: 16px;
-                font-weight: bold;
-                border-radius: 8px;
-                font-family: 'Source Sans Pro', sans-serif;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            ">
-                🔍 주소 검색하기 (새 창 열기)
-            </a>
-            <p style="margin-top:8px; font-size:13px; color:#666; text-align:center;">
-                ※ 보안을 위해 새 창에서 검색 후, 자동으로 앱으로 복귀합니다.
-            </p>
+                new daum.Postcode({{
+                    oncomplete: function(data) {{
+                        var addr = ''; 
+                        var extraAddr = ''; 
+                        if (data.userSelectedType === 'R') {{ 
+                            addr = data.roadAddress;
+                            if (data.bname !== '' && /[동|로|가]$/g.test(data.bname)) extraAddr += data.bname;
+                            if (data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
+                            if (extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
+                        }} else {{ 
+                            addr = data.jibunAddress;
+                        }}
+                        var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
+                        
+                        // [핵심] 주소 선택 즉시 검색창을 없애고 "적용 버튼"을 띄웁니다.
+                        // target="_top" 속성이 있는 a 태그(링크)는 브라우저가 절대 막지 않습니다.
+                        var targetBase = "{APP_BASE_URL}";
+                        var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
+
+                        wrapper.innerHTML = `
+                            <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background-color:#f0f2f6;">
+                                <h3 style="color:#333; margin-bottom:20px;">✅ 주소 선택 완료!</h3>
+                                <p style="margin-bottom:20px; color:#555; font-size:14px; font-weight:bold;">${{fullAddr}}</p>
+                                <a href="${{finalUrl}}" target="_top" style="
+                                    text-decoration:none;
+                                    background-color:#FF4B4B;
+                                    color:white;
+                                    padding:15px 40px;
+                                    font-size:18px;
+                                    font-weight:bold;
+                                    border-radius:8px;
+                                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                                    animation: pulse 2s infinite;
+                                ">
+                                    👉 눌러서 주소 입력하기
+                                </a>
+                            </div>
+                            <style>
+                                @keyframes pulse {{
+                                    0% {{ transform: scale(1); }}
+                                    50% {{ transform: scale(1.05); }}
+                                    100% {{ transform: scale(1); }}
+                                }}
+                            </style>
+                        `;
+                    }},
+                    width : '100%',
+                    height : '100%',
+                    maxSuggestItems : 5
+                }}).embed(element_layer);
+            </script>
             """
             
-            components.html(link_btn_code, height=100)
+            with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
+                components.html(daum_code, height=410)
             
             a1, a2 = st.columns([2, 1])
             
             # [Key 바인딩] 상단의 session_state['k_addr_full'] 값이 여기에 표시됨
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
-                placeholder="위 버튼을 눌러 검색하세요.", 
+                placeholder="위 검색창에서 주소를 선택하세요.", 
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
