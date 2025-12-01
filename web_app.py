@@ -16,21 +16,17 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
-# 👇 고객님의 실제 배포 URL (이곳으로 강제 리다이렉트 됩니다)
+# 👇 고객님의 실제 배포 URL
 APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ------------------------------------------
 # [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
-# 1. URL에 addr 파라미터가 있는지 확인
 if "addr" in st.query_params:
     addr_value = st.query_params["addr"]
-    # 2. 주소 입력창의 Key('k_addr_full')에 값을 강제로 주입
     st.session_state['k_addr_full'] = addr_value
-    # 3. 처리가 끝났으므로 URL 파라미터 청소
     st.query_params.clear()
 
-# 4. 세션 초기화 (키 에러 방지)
 if 'k_addr_full' not in st.session_state:
     st.session_state['k_addr_full'] = ''
 
@@ -235,9 +231,8 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] 자바스크립트: window.open + _top을 이용한 강력한 리다이렉트
+            # [수정됨] 자바스크립트: 'a' 태그 클릭 시뮬레이션으로 보안 차단 완벽 우회
             # -----------------------------------------------------
-            # 고객님의 앱 주소로 직접 쏘기 때문에 iframe 보안 이슈가 발생하지 않습니다.
             daum_code = f"""
             <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
@@ -257,12 +252,15 @@ else:
                         }}
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [최후의 수단] 앱 URL을 하드코딩하여 최상위 윈도우(_top)로 쏴버립니다.
-                        // 보안 정책(CORS)을 완전히 무시하고 작동하는 방식입니다.
                         var targetBase = "{APP_BASE_URL}";
                         var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
                         
-                        window.open(finalUrl, "_top");
+                        // [핵심] window.open 대신 '링크 클릭'을 가장하여 브라우저 보안을 우회합니다.
+                        var link = document.createElement('a');
+                        link.href = finalUrl;
+                        link.target = '_top'; // 최상위 창에서 열기
+                        document.body.appendChild(link);
+                        link.click();
                     }},
                     width : '100%',
                     height : '100%',
