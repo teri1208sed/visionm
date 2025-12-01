@@ -5,7 +5,7 @@ import re
 import requests 
 import base64   
 import json
-import os # 파일 확장자 추출용 모듈
+import os
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -16,14 +16,23 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
+# ------------------------------------------
+# [핵심 로직] URL 파라미터로 넘어온 주소값 처리
+# ------------------------------------------
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    st.query_params.clear() # 주소창의 지저분한 파라미터 제거
+
+if 'selected_addr' not in st.session_state:
+    st.session_state['selected_addr'] = ''
+
 # ==========================================
 # ⚙️ [사용자 설정]
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 ADMIN_ID = "admin"
 
-# 👇 [중요] 구글 앱스 스크립트(GAS) 배포 주소를 여기에 넣으세요!
-# 주소는 반드시 https://.../exec 로 끝나야 합니다.
+# 👇 구글 앱스 스크립트(GAS) 배포 주소
 GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
 
 ADMIN_NOTICE = """
@@ -55,37 +64,29 @@ def get_services():
     gc = gspread.authorize(creds)
     return gc
 
-# 🔥 [핵심 수정] 파일명을 '고객사명_종류' 형식으로 변경하여 GAS로 전송
+# 파일 업로드 함수
 def upload_file_to_gas(file_obj, custom_name_prefix):
     if file_obj is None: return ""
     
     try:
-        # 1. 원본 파일의 확장자(.png, .jpg 등)만 추출
         _, file_extension = os.path.splitext(file_obj.name)
-        
-        # 2. 새로운 파일명 조합 (대괄호 없이 깔끔하게)
-        # 예: "비전엠1" + "_사업자등록증" + ".jpg" -> "비전엠1_사업자등록증.jpg"
         new_filename = f"{custom_name_prefix}{file_extension}"
         
-        # 3. 파일을 문자열(Base64)로 변환
         content = file_obj.getvalue()
         b64_data = base64.b64encode(content).decode('utf-8')
         
-        # 4. 데이터 전송 준비
         payload = {
             'fileName': new_filename, 
             'mimeType': file_obj.type,
             'fileData': b64_data
         }
         
-        # 5. GAS(우체국)로 발송
         response = requests.post(
             GAS_URL, 
             data=json.dumps(payload),
             headers={'Content-Type': 'application/json'}
         )
         
-        # 6. 결과 처리
         res_data = response.json()
         if res_data.get('result') == 'success':
             return res_data['url']
@@ -124,18 +125,11 @@ def validate_phone(number):
     c = clean_number(number)
     return c.startswith("0") and (9 <= len(c) <= 11)
 def validate_email(email): return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email) is not None
-
-# [영어 입력 방지 함수]
-def has_english_char(text):
-    return bool(re.search(r'[a-zA-Z]', str(text)))
+def has_english_char(text): return bool(re.search(r'[a-zA-Z]', str(text)))
 
 # ==========================================
 # 🚀 [앱 메인 로직]
 # ==========================================
-
-if "addr" in st.query_params:
-    st.session_state['selected_addr'] = st.query_params["addr"]
-    st.query_params.clear()
 
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -175,15 +169,12 @@ if not st.session_state['user_id']:
     with tab2:
         st.subheader("📝 파트너사 가입 신청")
         st.info("관리자 승인 후 로그인이 가능합니다.")
-        
-        # [안전] 비밀번호 경고 문구
         st.warning("⚠️ 보안을 위해 금융/포털 등에서 사용하는 중요 비밀번호는 피해주세요.")
         
         nid = st.text_input("희망 아이디", key="join_id")
         npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
         nname = st.text_input("업체명 (이름)", key="join_name")
         
-        # [추가] 파일 업로더
         st.markdown("---")
         st.write("📂 **사업자등록증 또는 명함 첨부 (필수)**")
         join_file = st.file_uploader("증빙 서류 (이미지/PDF)", type=['png', 'jpg', 'jpeg', 'pdf'], key="join_file_upload")
@@ -197,23 +188,13 @@ if not st.session_state['user_id']:
                     st.error("이미 존재하는 아이디입니다.")
                 else:
                     with st.spinner("가입 서류 업로드 중..."):
-                        # 1. 파일 업로드 (GAS) -> 링크 생성
                         file_link = upload_file_to_gas(join_file, f"PARTNER_{nid}")
-                        
-                        # 2. 시트가 비어있다면 헤더 자동 생성 (혹시 모를 대비)
                         if len(ws_user.get_all_values()) == 0:
                             ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부", "첨부파일"])
                         
-                        # 3. users 시트에 저장 (상태: 대기, 맨 뒤에 파일 링크 추가)
                         ws_user.append_row([
-                            nid, 
-                            npw, 
-                            nname, 
-                            datetime.now().strftime("%Y-%m-%d"), 
-                            "대기", 
-                            file_link  # F열에 저장됨
+                            nid, npw, nname, datetime.now().strftime("%Y-%m-%d"), "대기", file_link
                         ])
-                        
                         st.success("✅ 가입 신청이 완료되었습니다! 관리자 승인 대기 중입니다.")
 
 # ----------------------------------------------------
@@ -228,7 +209,7 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        st.session_state['selected_addr'] = None 
+        st.session_state['selected_addr'] = '' 
         st.rerun()
 
     if not is_approved:
@@ -241,37 +222,26 @@ else:
         
         with adm_tab1:
             st.info("💡 '첨부파일' 링크를 클릭해 확인 후, '승인여부'를 '대기' ➝ '승인'으로 변경하고 저장하세요.")
-            
-            # users 시트 데이터 가져오기
             u_df = pd.DataFrame(ws_user.get_all_records())
-            
-            # [기능 업그레이드] 데이터 에디터 설정 (링크 클릭 가능하게)
             edited_users = st.data_editor(
                 u_df,
                 num_rows="dynamic",
                 key="uedit",
                 column_config={
                     "첨부파일": st.column_config.LinkColumn(
-                        "증빙서류", 
-                        help="클릭하면 이미지가 열립니다", 
-                        display_text="보기" # URL 대신 '보기'라는 글자로 표시됨
+                        "증빙서류", help="클릭하면 이미지가 열립니다", display_text="보기"
                     ),
                     "승인여부": st.column_config.SelectboxColumn(
-                        "승인여부",
-                        options=["대기", "승인", "거절"],
-                        required=True
+                        "승인여부", options=["대기", "승인", "거절"], required=True
                     )
                 }
             )
-            
             if st.button("회원 정보 저장"):
-                # 변경된 내용 구글 시트에 업데이트
                 ws_user.update([edited_users.columns.values.tolist()] + edited_users.values.tolist())
                 st.success("✅ 회원 정보가 저장되었습니다!")
                 st.rerun()
 
         with adm_tab2:
-            # 접수 대장 관리 (기존 동일)
             r_df = pd.DataFrame(ws_req.get_all_records())
             edited_req = st.data_editor(r_df, num_rows="dynamic", key="redit")
             if st.button("접수내역 저장"):
@@ -279,12 +249,16 @@ else:
                 st.success("저장 완료!")
     else:
         st.info(ADMIN_NOTICE)
+        
+        # ---------------------------------------------------------
+        # [수정] 입력 폼 시작 (st.form)
+        # ---------------------------------------------------------
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            # 영어 입력 방지 안내 문구
             c_name = c1.text_input("고객사명 (필수)", placeholder="예: 비전엠1 (영어 불가)", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
+            
             c3, c4 = st.columns(2)
             biz_no_input = c3.text_input("사업자번호 (필수)", placeholder="숫자만 입력", key="k_biz_no")
             ind_options = ["건설", "건축(전기/인테리어)", "토목(엔지니어링)", "제조", "자동차", "항공", "금형", "반도체", "철강", "플랜트", "스마트공장", "기타", "공공", "서비스"]
@@ -292,45 +266,52 @@ else:
 
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
+
+            # -----------------------------------------------------
+            # [수정] 자바스크립트: 주소 선택 시 URL 파라미터로 값 전달
+            # -----------------------------------------------------
             daum_code = """
-            <style>
-                .wrap { background:white; padding:15px; border-radius:10px; border:1px solid #ddd; font-family: sans-serif; }
-                #btn_link { display:none; box-sizing: border-box; width:100%; padding:15px; margin-top:10px; background-color:#2c7a7b; color:white; text-align:center; text-decoration:none; border-radius:8px; font-size:16px; font-weight:bold; transition: background 0.2s; border: 2px solid #234e52; }
-                #btn_link:hover { background-color:#285e61; }
-                h4 { margin:0 0 10px 0; color:#333; }
-            </style>
-            <div class="wrap">
-                <h4>🔍 주소 검색</h4>
-                <div id="layer" style="height:350px; width:100%; border:1px solid #eee;"></div>
-                <a id="btn_link" href="#" target="_top">✅ 주소 입력 완료! (여기를 클릭하세요)</a>
-            </div>
+            <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
-                var btn_link = document.getElementById('btn_link');
                 new daum.Postcode({
                     oncomplete: function(data) {
-                        var addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
-                        var extraAddr = '';
-                        if(data.userSelectedType === 'R'){
-                            if(data.bname !== '' && /[동|로|가]$/g.test(data.bname)) extraAddr += data.bname;
-                            if(data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
-                            if(extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
+                        var addr = ''; 
+                        var extraAddr = ''; 
+                        if (data.userSelectedType === 'R') { 
+                            addr = data.roadAddress;
+                            if (data.bname !== '' && /[동|로|가]$/g.test(data.bname)) extraAddr += data.bname;
+                            if (data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
+                            if (extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
+                        } else { 
+                            addr = data.jibunAddress;
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                        element_layer.style.display = 'none';
-                        btn_link.href = "?addr=" + encodeURIComponent(fullAddr);
-                        btn_link.style.display = "block";
-                        try { btn_link.click(); } catch(e) {}
+                        
+                        // 현재 페이지 URL에 addr 파라미터를 추가하여 부모창 리로드
+                        var currentUrl = window.parent.location.href.split('?')[0];
+                        window.parent.location.href = currentUrl + "?addr=" + encodeURIComponent(fullAddr);
                     },
-                    width : '100%', height : '100%'
+                    width : '100%',
+                    height : '100%',
+                    maxSuggestItems : 5
                 }).embed(element_layer);
             </script>
             """
+            
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=450)
+                components.html(daum_code, height=410)
+            
             a1, a2 = st.columns([2, 1])
-            addr_full = a1.text_input("기본 주소 (자동 입력됨)", value=st.session_state.get('selected_addr', ''), placeholder="검색 후 직접 복사/붙여넣기해야합니다.", key="k_addr_full")
+            
+            # [수정] value에 session_state 값을 바인딩하여 자동 입력 구현
+            addr_full = a1.text_input(
+                "기본 주소 (자동 입력됨)", 
+                value=st.session_state['selected_addr'], 
+                placeholder="위 검색창에서 주소를 선택하세요.", 
+                key="k_addr_full"
+            )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
 
             st.markdown("---")
@@ -361,7 +342,6 @@ else:
                 if mgr_ph_input and not validate_phone(mgr_ph_input): err_msgs.append("연락처 형식을 확인해주세요.")
                 if mgr_em and not validate_email(mgr_em): err_msgs.append("이메일 형식이 올바르지 않습니다.")
                 
-                # [영어 입력 방지]
                 if has_english_char(c_name):
                     err_msgs.append("고객사명에 영어가 포함되어 있습니다. 한글이나 숫자로 입력해주세요.")
 
@@ -370,8 +350,6 @@ else:
                 else:
                     with st.spinner("파일 업로드 및 저장 중..."):
                         try:
-                            # [파일명 자동 변경: 대괄호 없이 깔끔하게]
-                            # 예: c_name이 "비전엠" -> "비전엠_사업자등록증.jpg"
                             link_biz = upload_file_to_gas(up_file_biz, f"{c_name}_사업자등록증") if up_file_biz else ""
                             link_card = upload_file_to_gas(up_file_card, f"{c_name}_명함") if up_file_card else ""
                             
@@ -385,6 +363,10 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
+                            
+                            # 성공 후 주소 초기화
+                            st.session_state['selected_addr'] = ''
+                            
                         except Exception as e:
                             st.error(f"오류: {e}")
 
@@ -393,6 +375,10 @@ else:
         rows = ws_req.get_all_records()
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(df[df['작성자'].astype(str) == uid])
+            # 데이터프레임 필터링 안전 장치
+            if '작성자' in df.columns:
+                st.dataframe(df[df['작성자'].astype(str) == uid])
+            else:
+                st.write("데이터 형식이 올바르지 않습니다.")
         else:
             st.write("내역이 없습니다.")
