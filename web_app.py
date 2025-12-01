@@ -10,7 +10,6 @@ import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
-import urllib.parse
 
 # ==========================================
 # 🚀 [앱 기본 설정]
@@ -23,19 +22,12 @@ APP_BASE_URL = "https://visionm.streamlit.app"
 # ------------------------------------------
 # [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
-# 1. URL에 addr 파라미터가 들어왔는지 확인
 if "addr" in st.query_params:
-    # 2. 파라미터 값을 세션 상태에 저장
-    addr_value = st.query_params["addr"]
-    st.session_state['k_addr_full'] = addr_value
-    
-    # 3. URL 파라미터 제거 (주소창을 깨끗하게 만들기 위해)
+    st.session_state['k_addr_full'] = st.query_params["addr"]
     st.query_params.clear()
-    
-    # 4. 앱 리로드 (입력창에 값 반영)
+    # 파라미터가 있을 때만 리런 (무한 루프 방지)
     st.rerun()
 
-# 5. 세션 초기화
 if 'k_addr_full' not in st.session_state:
     st.session_state['k_addr_full'] = ''
 
@@ -240,46 +232,63 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [최종 수정] "UI 교체 + target=_top" 방식 (보안 우회 보장)
+            # [최종 해결책] "UI 교체 + 새 탭 적용 + 복사 버튼"
             # -----------------------------------------------------
-            # 작동 원리:
-            # 1. Daum 주소 검색창이 뜹니다.
-            # 2. 사용자가 주소를 클릭하면, 자바스크립트가 감지하여 검색창을 숨기고 "적용 버튼"을 보여줍니다.
-            # 3. "적용 버튼"은 <a href="..." target="_top"> 태그로 구성됩니다.
-            # 4. 사용자가 버튼을 클릭하면 브라우저는 이를 정상적인 페이지 이동으로 간주하여 앱을 리로드합니다.
-            # 5. 리로드 시 URL 파라미터(?addr=...)를 통해 데이터가 Python 변수로 전달됩니다.
-            
             daum_code = f"""
             <div id="wrapper" style="width:100%; height:400px; position:relative; background-color:#fff;">
                 <div id="layer" style="display:block; width:100%; height:100%; border:1px solid #ddd; -webkit-overflow-scrolling:touch;"></div>
                 
-                <div id="result_layer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background-color:#f8f9fa; z-index:999; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
-                    <h3 style="color:#000; margin-bottom:15px; font-weight:bold;">✅ 주소 선택 완료</h3>
-                    <p id="addr_text" style="color:#333; font-size:15px; margin-bottom:20px; font-weight:500; padding:0 10px;"></p>
+                <div id="result_layer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background-color:#fff; z-index:999; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+                    <h3 style="color:#333; margin-bottom:10px;">✅ 주소 선택 완료!</h3>
                     
-                    <a id="apply_btn" href="#" target="_top" style="
+                    <textarea id="addr_text" readonly style="
+                        width: 80%;
+                        height: 60px;
+                        background: #f8f9fa;
+                        border: 1px solid #ddd;
+                        border-radius: 5px;
+                        padding: 10px;
+                        margin-bottom: 20px;
+                        font-size: 14px;
+                        resize: none;
+                        text-align: center;
+                    "></textarea>
+                    
+                    <a id="apply_btn" href="#" target="_blank" style="
                         text-decoration: none;
-                        background-color: #ff4b4b;
+                        background-color: #FF4B4B;
                         color: white;
-                        padding: 15px 30px;
-                        border-radius: 8px;
+                        padding: 12px 24px;
+                        border-radius: 5px;
                         font-weight: bold;
                         font-size: 16px;
+                        display: inline-block;
+                        margin-bottom: 10px;
                         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                        transition: background-color 0.3s;
                     ">
-                        👇 눌러서 입력하기
+                        🚀 주소 적용하기 (새창)
                     </a>
-                    <p style="margin-top:15px; font-size:12px; color:#666;">(보안을 위해 버튼을 눌러주세요)</p>
                     
-                    <button onclick="retrySearch()" style="
-                        margin-top:20px; 
-                        background:none; 
-                        border:none; 
-                        color:#666; 
-                        text-decoration:underline; 
-                        cursor:pointer;
-                    ">다시 검색하기</button>
+                    <button onclick="copyToClipboard()" style="
+                        background-color: #333;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 5px;
+                        font-size: 14px;
+                        cursor: pointer;
+                        display: block;
+                        margin-top: 5px;
+                    ">
+                        📋 주소 복사하기
+                    </button>
+                    
+                    <p style="margin-top:15px; font-size:12px; color:#666;">
+                        * 보안 정책상 새 창이 열리며 적용됩니다.<br>
+                        * 새 창이 불편하시면 [복사] 후 직접 붙여넣으세요.
+                    </p>
+
+                    <button onclick="retrySearch()" style="margin-top:20px; background:none; border:none; color:#999; text-decoration:underline; cursor:pointer;">다시 검색</button>
                 </div>
             </div>
 
@@ -294,10 +303,15 @@ else:
                     result_layer.style.display = 'none';
                     element_layer.style.display = 'block';
                 }}
+                
+                function copyToClipboard() {{
+                    addr_text.select();
+                    document.execCommand('copy');
+                    alert('주소가 복사되었습니다! 입력창에 붙여넣기(Ctrl+V) 하세요.');
+                }}
 
                 new daum.Postcode({{
                     oncomplete: function(data) {{
-                        // 주소 조합 로직
                         var addr = ''; 
                         var extraAddr = ''; 
                         if (data.userSelectedType === 'R') {{ 
@@ -312,7 +326,6 @@ else:
 
                         // URL 생성
                         var targetBase = "{APP_BASE_URL}";
-                        // 파라미터가 이미 있을 수 있으므로 처리
                         var separator = targetBase.includes('?') ? '&' : '?';
                         var finalUrl = targetBase + separator + "addr=" + encodeURIComponent(fullAddr);
 
@@ -321,7 +334,7 @@ else:
                         result_layer.style.display = 'flex';
                         
                         // 데이터 바인딩
-                        addr_text.innerText = fullAddr;
+                        addr_text.value = fullAddr;
                         apply_btn.href = finalUrl;
                     }},
                     width : '100%',
@@ -339,7 +352,7 @@ else:
             # [Key 바인딩] session_state에 값이 있으면 자동으로 채워짐
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
-                placeholder="위 검색창에서 주소를 선택하세요.", 
+                placeholder="검색 후 '적용하기'를 누르세요.", 
                 key="k_addr_full"
             )
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
