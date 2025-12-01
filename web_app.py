@@ -24,7 +24,7 @@ if "addr" in st.query_params:
     addr_value = st.query_params["addr"]
     # 2. 주소 입력창의 Key('k_addr_full')에 값을 강제로 주입
     st.session_state['k_addr_full'] = addr_value
-    # 3. 처리가 끝났으므로 URL 파라미터 청소 (새로고침 시 재실행 방지)
+    # 3. 처리가 끝났으므로 URL 파라미터 청소
     st.query_params.clear()
 
 # 4. 세션 초기화 (키 에러 방지)
@@ -36,8 +36,6 @@ if 'k_addr_full' not in st.session_state:
 # ==========================================
 SPREADSHEET_NAME = 'ZWCAD_접수대장'
 ADMIN_ID = "admin"
-
-# 👇 구글 앱스 스크립트(GAS) 배포 주소
 GAS_URL = "https://script.google.com/macros/s/AKfycbxtwIB9ENpfl9cDaJ9Ia8wtviHyzhKe-XByN4iCX32Daurbd_-wvkV1KZ-LHq7Qdlh6/exec" 
 
 ADMIN_NOTICE = """
@@ -72,33 +70,22 @@ def get_services():
 # 파일 업로드 함수
 def upload_file_to_gas(file_obj, custom_name_prefix):
     if file_obj is None: return ""
-    
     try:
         _, file_extension = os.path.splitext(file_obj.name)
         new_filename = f"{custom_name_prefix}{file_extension}"
-        
         content = file_obj.getvalue()
         b64_data = base64.b64encode(content).decode('utf-8')
-        
         payload = {
             'fileName': new_filename, 
             'mimeType': file_obj.type,
             'fileData': b64_data
         }
-        
-        response = requests.post(
-            GAS_URL, 
-            data=json.dumps(payload),
-            headers={'Content-Type': 'application/json'}
-        )
-        
+        response = requests.post(GAS_URL, data=json.dumps(payload), headers={'Content-Type': 'application/json'})
         res_data = response.json()
-        if res_data.get('result') == 'success':
-            return res_data['url']
+        if res_data.get('result') == 'success': return res_data['url']
         else:
             st.error(f"업로드 실패: {res_data.get('error')}")
             return ""
-            
     except Exception as e:
         st.error(f"연결 오류: {str(e)}")
         return ""
@@ -107,12 +94,10 @@ def upload_file_to_gas(file_obj, custom_name_prefix):
 # 🛡️ [유효성 검사 및 포맷팅]
 # ==========================================
 def clean_number(num): return re.sub(r'\D', '', str(num))
-
 def format_biz_no(num):
     clean = clean_number(num)
     if len(clean) == 10: return f"{clean[:3]}-{clean[3:5]}-{clean[5:]}"
     return num
-
 def format_phone(num):
     clean = clean_number(num)
     length = len(clean)
@@ -124,7 +109,6 @@ def format_phone(num):
         if length == 10: return f"{clean[:3]}-{clean[3:6]}-{clean[6:]}"
         elif length == 11: return f"{clean[:3]}-{clean[3:7]}-{clean[7:]}"
     return num
-
 def validate_biz_no(number): return len(clean_number(number)) == 10
 def validate_phone(number): 
     c = clean_number(number)
@@ -150,9 +134,6 @@ except Exception as e:
     st.error(f"❌ 구글 연결 오류: {e}")
     st.stop()
 
-# ----------------------------------------------------
-# [화면 A] 로그인
-# ----------------------------------------------------
 if not st.session_state['user_id']:
     st.title("🔒 VISIONM 파트너 로그인")
     tab1, tab2 = st.tabs(["로그인", "회원가입 요청"])
@@ -179,32 +160,21 @@ if not st.session_state['user_id']:
         nid = st.text_input("희망 아이디", key="join_id")
         npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
         nname = st.text_input("업체명 (이름)", key="join_name")
-        
         st.markdown("---")
         st.write("📂 **사업자등록증 또는 명함 첨부 (필수)**")
         join_file = st.file_uploader("증빙 서류 (이미지/PDF)", type=['png', 'jpg', 'jpeg', 'pdf'], key="join_file_upload")
-
         if st.button("가입 신청"):
             if not (nid and npw and nname and join_file):
                 st.error("모든 정보를 입력하고 파일을 첨부해주세요.")
             else:
                 existing = ws_user.col_values(1)
-                if nid in existing:
-                    st.error("이미 존재하는 아이디입니다.")
+                if nid in existing: st.error("이미 존재하는 아이디입니다.")
                 else:
                     with st.spinner("가입 서류 업로드 중..."):
                         file_link = upload_file_to_gas(join_file, f"PARTNER_{nid}")
-                        if len(ws_user.get_all_values()) == 0:
-                            ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부", "첨부파일"])
-                        
-                        ws_user.append_row([
-                            nid, npw, nname, datetime.now().strftime("%Y-%m-%d"), "대기", file_link
-                        ])
+                        if len(ws_user.get_all_values()) == 0: ws_user.append_row(["아이디", "비밀번호", "이름", "가입일", "승인여부", "첨부파일"])
+                        ws_user.append_row([nid, npw, nname, datetime.now().strftime("%Y-%m-%d"), "대기", file_link])
                         st.success("✅ 가입 신청이 완료되었습니다! 관리자 승인 대기 중입니다.")
-
-# ----------------------------------------------------
-# [화면 B] 메인 시스템
-# ----------------------------------------------------
 else:
     uid = st.session_state['user_id']
     uname = st.session_state['user_name']
@@ -214,9 +184,7 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        # 로그아웃 시 세션값도 정리
-        if 'k_addr_full' in st.session_state:
-            st.session_state['k_addr_full'] = ''
+        if 'k_addr_full' in st.session_state: st.session_state['k_addr_full'] = ''
         st.rerun()
 
     if not is_approved:
@@ -226,28 +194,17 @@ else:
     if uid == ADMIN_ID:
         st.markdown("### 🛠️ 관리자 대시보드")
         adm_tab1, adm_tab2 = st.tabs(["👥 회원 관리 (승인)", "📝 접수 대장 관리"])
-        
         with adm_tab1:
             st.info("💡 '첨부파일' 링크를 클릭해 확인 후, '승인여부'를 '대기' ➝ '승인'으로 변경하고 저장하세요.")
             u_df = pd.DataFrame(ws_user.get_all_records())
             edited_users = st.data_editor(
-                u_df,
-                num_rows="dynamic",
-                key="uedit",
-                column_config={
-                    "첨부파일": st.column_config.LinkColumn(
-                        "증빙서류", help="클릭하면 이미지가 열립니다", display_text="보기"
-                    ),
-                    "승인여부": st.column_config.SelectboxColumn(
-                        "승인여부", options=["대기", "승인", "거절"], required=True
-                    )
-                }
+                u_df, num_rows="dynamic", key="uedit",
+                column_config={"첨부파일": st.column_config.LinkColumn("증빙서류", display_text="보기"), "승인여부": st.column_config.SelectboxColumn("승인여부", options=["대기", "승인", "거절"], required=True)}
             )
             if st.button("회원 정보 저장"):
                 ws_user.update([edited_users.columns.values.tolist()] + edited_users.values.tolist())
                 st.success("✅ 회원 정보가 저장되었습니다!")
                 st.rerun()
-
         with adm_tab2:
             r_df = pd.DataFrame(ws_req.get_all_records())
             edited_req = st.data_editor(r_df, num_rows="dynamic", key="redit")
@@ -275,7 +232,7 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] 자바스크립트: URL 객체를 사용한 안전한 파라미터 전달
+            # [수정됨] 자바스크립트: 보안(Cross-Origin) 우회 및 강력한 URL 리다이렉트
             # -----------------------------------------------------
             daum_code = """
             <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
@@ -296,17 +253,21 @@ else:
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [핵심 수정] 자바스크립트 URL 객체를 사용하여 안전하게 파라미터 주입
-                        // 기존 URL의 파라미터를 유지하면서 addr만 추가/변경합니다.
-                        try {
-                            var parentUrl = new URL(window.parent.location.href);
-                            parentUrl.searchParams.set('addr', fullAddr);
-                            window.parent.location.href = parentUrl.toString();
-                        } catch(e) {
-                            // URL 객체 사용 불가 시 백업 (오류 방지)
-                            console.error(e);
-                            window.parent.location.href = "?addr=" + encodeURIComponent(fullAddr);
+                        // [강력한 수정] Cross-Origin 보안 문제 해결 로직
+                        var targetUrl = "";
+                        
+                        // 1. referrer(나를 부른 페이지)를 확인하여 URL 추출 시도
+                        if (document.referrer && document.referrer.indexOf("streamlit.app") !== -1) {
+                            targetUrl = document.referrer.split('?')[0];
+                        } 
+                        
+                        // 2. 만약 실패했다면, 스크린샷에 있는 고객님의 실제 앱 주소로 강제 지정 (안전장치)
+                        if (!targetUrl || targetUrl === "") {
+                             targetUrl = "https://visionm.streamlit.app";
                         }
+
+                        // 3. 최종 이동 실행 (부모 창 리로드)
+                        window.parent.location.href = targetUrl + "?addr=" + encodeURIComponent(fullAddr);
                     },
                     width : '100%',
                     height : '100%',
@@ -320,7 +281,7 @@ else:
             
             a1, a2 = st.columns([2, 1])
             
-            # [수정됨] value 제거 -> session_state['k_addr_full']이 값을 지배함
+            # [Key 바인딩] 상단의 session_state['k_addr_full'] 값이 여기에 표시됨
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 placeholder="위 검색창에서 주소를 선택하세요.", 
@@ -366,7 +327,6 @@ else:
                         try:
                             link_biz = upload_file_to_gas(up_file_biz, f"{c_name}_사업자등록증") if up_file_biz else ""
                             link_card = upload_file_to_gas(up_file_card, f"{c_name}_명함") if up_file_card else ""
-                            
                             biz_final = format_biz_no(biz_no_input)
                             ph_final = format_phone(mgr_ph_input)
                             
@@ -377,11 +337,7 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수되었습니다!")
                             st.balloons()
-                            
-                            # 성공 후 세션 주소 초기화
-                            if 'k_addr_full' in st.session_state:
-                                st.session_state['k_addr_full'] = ''
-                            
+                            if 'k_addr_full' in st.session_state: st.session_state['k_addr_full'] = ''
                         except Exception as e:
                             st.error(f"오류: {e}")
 
@@ -390,9 +346,6 @@ else:
         rows = ws_req.get_all_records()
         if rows:
             df = pd.DataFrame(rows)
-            if '작성자' in df.columns:
-                st.dataframe(df[df['작성자'].astype(str) == uid])
-            else:
-                st.write("데이터 형식이 올바르지 않습니다.")
-        else:
-            st.write("내역이 없습니다.")
+            if '작성자' in df.columns: st.dataframe(df[df['작성자'].astype(str) == uid])
+            else: st.write("데이터 형식이 올바르지 않습니다.")
+        else: st.write("내역이 없습니다.")
