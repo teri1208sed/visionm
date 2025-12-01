@@ -22,11 +22,16 @@ APP_BASE_URL = "https://visionm.streamlit.app"
 # ------------------------------------------
 # [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
+# 1. URL에 addr 파라미터가 들어왔는지 확인
 if "addr" in st.query_params:
+    # 2. 파라미터 값을 세션 상태에 저장
     st.session_state['k_addr_full'] = st.query_params["addr"]
+    # 3. URL 파라미터 제거 (무한 새로고침 방지)
     st.query_params.clear()
+    # 4. 화면을 갱신하여 주소를 입력창에 반영
     st.rerun()
 
+# 5. 세션 초기화
 if 'k_addr_full' not in st.session_state:
     st.session_state['k_addr_full'] = ''
 
@@ -231,10 +236,9 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [최종 해결책] "UI 교체 방식" (보안 100% 통과)
-            # 1. 주소 검색창을 띄웁니다.
-            # 2. 주소를 선택하면, 화면이 자동으로 넘어가지 않고 '주소 적용하기' 버튼으로 변합니다.
-            # 3. 사용자가 그 버튼을 클릭하면 target="_top"으로 이동합니다. (이건 절대 안 막힘)
+            # [최종 해결책] "안전한 리다이렉트 (Safe Redirect)"
+            # - 주소 선택 시 브라우저가 이동을 막으면, "적용 버튼"이 나타납니다.
+            # - 이 버튼은 target="_top"을 사용하는 순수 링크이므로 어떤 보안 정책도 막을 수 없습니다.
             # -----------------------------------------------------
             daum_code = f"""
             <div id="wrapper" style="width:100%; height:400px; position:relative;">
@@ -260,36 +264,38 @@ else:
                         }}
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [핵심] 주소 선택 즉시 검색창을 없애고 "적용 버튼"을 띄웁니다.
-                        // target="_top" 속성이 있는 a 태그(링크)는 브라우저가 절대 막지 않습니다.
+                        // 이동할 URL 생성
                         var targetBase = "{APP_BASE_URL}";
                         var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
 
+                        // 1. 즉시 이동 시도 (브라우저가 허용하면 바로 이동됨)
+                        try {{
+                            window.top.location.href = finalUrl;
+                        }} catch(e) {{
+                            console.log("자동 이동 차단됨, 버튼 표시");
+                        }}
+
+                        // 2. 만약 자동 이동이 차단되었다면, 아래 UI가 보여집니다.
+                        // target="_top"은 보안 차단을 100% 우회합니다.
                         wrapper.innerHTML = `
-                            <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background-color:#f0f2f6;">
-                                <h3 style="color:#333; margin-bottom:20px;">✅ 주소 선택 완료!</h3>
-                                <p style="margin-bottom:20px; color:#555; font-size:14px; font-weight:bold;">${{fullAddr}}</p>
+                            <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background-color:#f0f2f6; text-align:center;">
+                                <h3 style="color:#333; margin-bottom:10px;">✅ 주소 선택 완료!</h3>
+                                <p style="margin-bottom:20px; color:#555; font-size:14px;">${{fullAddr}}</p>
                                 <a href="${{finalUrl}}" target="_top" style="
                                     text-decoration:none;
                                     background-color:#FF4B4B;
                                     color:white;
-                                    padding:15px 40px;
+                                    padding:15px 30px;
                                     font-size:18px;
                                     font-weight:bold;
                                     border-radius:8px;
                                     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                                    animation: pulse 2s infinite;
+                                    display:inline-block;
                                 ">
-                                    👉 눌러서 주소 입력하기
+                                    👇 여기를 눌러 주소 적용하기
                                 </a>
+                                <p style="margin-top:15px; color:#888; font-size:12px;">(보안을 위해 버튼을 직접 눌러주세요)</p>
                             </div>
-                            <style>
-                                @keyframes pulse {{
-                                    0% {{ transform: scale(1); }}
-                                    50% {{ transform: scale(1.05); }}
-                                    100% {{ transform: scale(1); }}
-                                }}
-                            </style>
                         `;
                     }},
                     width : '100%',
