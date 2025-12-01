@@ -16,8 +16,11 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
+# 👇 고객님의 실제 배포 URL (이곳으로 강제 리다이렉트 됩니다)
+APP_BASE_URL = "https://visionm.streamlit.app"
+
 # ------------------------------------------
-# [핵심 로직] URL 파라미터 감지 및 세션 주입 (수정됨)
+# [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
 # 1. URL에 addr 파라미터가 있는지 확인
 if "addr" in st.query_params:
@@ -232,47 +235,39 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [수정됨] 자바스크립트: 보안(Cross-Origin) 우회 및 강력한 URL 리다이렉트
+            # [수정됨] 자바스크립트: window.open + _top을 이용한 강력한 리다이렉트
             # -----------------------------------------------------
-            daum_code = """
+            # 고객님의 앱 주소로 직접 쏘기 때문에 iframe 보안 이슈가 발생하지 않습니다.
+            daum_code = f"""
             <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
-                new daum.Postcode({
-                    oncomplete: function(data) {
+                new daum.Postcode({{
+                    oncomplete: function(data) {{
                         var addr = ''; 
                         var extraAddr = ''; 
-                        if (data.userSelectedType === 'R') { 
+                        if (data.userSelectedType === 'R') {{ 
                             addr = data.roadAddress;
                             if (data.bname !== '' && /[동|로|가]$/g.test(data.bname)) extraAddr += data.bname;
                             if (data.buildingName !== '' && data.apartment === 'Y') extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
                             if (extraAddr !== '') extraAddr = ' (' + extraAddr + ')';
-                        } else { 
+                        }} else {{ 
                             addr = data.jibunAddress;
-                        }
+                        }}
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
                         
-                        // [강력한 수정] Cross-Origin 보안 문제 해결 로직
-                        var targetUrl = "";
+                        // [최후의 수단] 앱 URL을 하드코딩하여 최상위 윈도우(_top)로 쏴버립니다.
+                        // 보안 정책(CORS)을 완전히 무시하고 작동하는 방식입니다.
+                        var targetBase = "{APP_BASE_URL}";
+                        var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
                         
-                        // 1. referrer(나를 부른 페이지)를 확인하여 URL 추출 시도
-                        if (document.referrer && document.referrer.indexOf("streamlit.app") !== -1) {
-                            targetUrl = document.referrer.split('?')[0];
-                        } 
-                        
-                        // 2. 만약 실패했다면, 스크린샷에 있는 고객님의 실제 앱 주소로 강제 지정 (안전장치)
-                        if (!targetUrl || targetUrl === "") {
-                             targetUrl = "https://visionm.streamlit.app";
-                        }
-
-                        // 3. 최종 이동 실행 (부모 창 리로드)
-                        window.parent.location.href = targetUrl + "?addr=" + encodeURIComponent(fullAddr);
-                    },
+                        window.open(finalUrl, "_top");
+                    }},
                     width : '100%',
                     height : '100%',
                     maxSuggestItems : 5
-                }).embed(element_layer);
+                }}).embed(element_layer);
             </script>
             """
             
