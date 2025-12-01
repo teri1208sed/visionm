@@ -10,13 +10,14 @@ import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
+import urllib.parse
 
 # ==========================================
 # 🚀 [앱 기본 설정]
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
-# 👇 고객님의 실제 배포 URL
+# 👇 고객님의 실제 배포 URL (정확해야 합니다)
 APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ------------------------------------------
@@ -25,10 +26,13 @@ APP_BASE_URL = "https://visionm.streamlit.app"
 # 1. URL에 addr 파라미터가 들어왔는지 확인
 if "addr" in st.query_params:
     # 2. 파라미터 값을 세션 상태에 저장
-    st.session_state['k_addr_full'] = st.query_params["addr"]
-    # 3. URL 파라미터 제거 (무한 새로고침 방지)
+    addr_value = st.query_params["addr"]
+    st.session_state['k_addr_full'] = addr_value
+    
+    # 3. URL 파라미터 제거 (주소창을 깨끗하게 만들기 위해)
     st.query_params.clear()
-    # 4. 화면을 갱신하여 주소를 입력창에 반영
+    
+    # 4. 앱 리로드 (입력창에 값 반영)
     st.rerun()
 
 # 5. 세션 초기화
@@ -236,22 +240,64 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [최종 해결책] "안전한 리다이렉트 (Safe Redirect)"
-            # - 주소 선택 시 브라우저가 이동을 막으면, "적용 버튼"이 나타납니다.
-            # - 이 버튼은 target="_top"을 사용하는 순수 링크이므로 어떤 보안 정책도 막을 수 없습니다.
+            # [최종 수정] "UI 교체 + target=_top" 방식 (보안 우회 보장)
             # -----------------------------------------------------
-            daum_code = f"""
-            <div id="wrapper" style="width:100%; height:400px; position:relative;">
-                <div id="layer" style="display:block; width:100%; height:100%; border:1px solid #333;"></div>
-            </div>
+            # 작동 원리:
+            # 1. Daum 주소 검색창이 뜹니다.
+            # 2. 사용자가 주소를 클릭하면, 자바스크립트가 감지하여 검색창을 숨기고 "적용 버튼"을 보여줍니다.
+            # 3. "적용 버튼"은 <a href="..." target="_top"> 태그로 구성됩니다.
+            # 4. 사용자가 버튼을 클릭하면 브라우저는 이를 정상적인 페이지 이동으로 간주하여 앱을 리로드합니다.
+            # 5. 리로드 시 URL 파라미터(?addr=...)를 통해 데이터가 Python 변수로 전달됩니다.
             
+            daum_code = f"""
+            <div id="wrapper" style="width:100%; height:400px; position:relative; background-color:#fff;">
+                <div id="layer" style="display:block; width:100%; height:100%; border:1px solid #ddd; -webkit-overflow-scrolling:touch;"></div>
+                
+                <div id="result_layer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background-color:#f8f9fa; z-index:999; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+                    <h3 style="color:#000; margin-bottom:15px; font-weight:bold;">✅ 주소 선택 완료</h3>
+                    <p id="addr_text" style="color:#333; font-size:15px; margin-bottom:20px; font-weight:500; padding:0 10px;"></p>
+                    
+                    <a id="apply_btn" href="#" target="_top" style="
+                        text-decoration: none;
+                        background-color: #ff4b4b;
+                        color: white;
+                        padding: 15px 30px;
+                        border-radius: 8px;
+                        font-weight: bold;
+                        font-size: 16px;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                        transition: background-color 0.3s;
+                    ">
+                        👇 눌러서 입력하기
+                    </a>
+                    <p style="margin-top:15px; font-size:12px; color:#666;">(보안을 위해 버튼을 눌러주세요)</p>
+                    
+                    <button onclick="retrySearch()" style="
+                        margin-top:20px; 
+                        background:none; 
+                        border:none; 
+                        color:#666; 
+                        text-decoration:underline; 
+                        cursor:pointer;
+                    ">다시 검색하기</button>
+                </div>
+            </div>
+
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
-                var wrapper = document.getElementById('wrapper');
+                var result_layer = document.getElementById('result_layer');
+                var addr_text = document.getElementById('addr_text');
+                var apply_btn = document.getElementById('apply_btn');
+                
+                function retrySearch() {{
+                    result_layer.style.display = 'none';
+                    element_layer.style.display = 'block';
+                }}
 
                 new daum.Postcode({{
                     oncomplete: function(data) {{
+                        // 주소 조합 로직
                         var addr = ''; 
                         var extraAddr = ''; 
                         if (data.userSelectedType === 'R') {{ 
@@ -263,40 +309,20 @@ else:
                             addr = data.jibunAddress;
                         }}
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                        
-                        // 이동할 URL 생성
+
+                        // URL 생성
                         var targetBase = "{APP_BASE_URL}";
-                        var finalUrl = targetBase + "?addr=" + encodeURIComponent(fullAddr);
+                        // 파라미터가 이미 있을 수 있으므로 처리
+                        var separator = targetBase.includes('?') ? '&' : '?';
+                        var finalUrl = targetBase + separator + "addr=" + encodeURIComponent(fullAddr);
 
-                        // 1. 즉시 이동 시도 (브라우저가 허용하면 바로 이동됨)
-                        try {{
-                            window.top.location.href = finalUrl;
-                        }} catch(e) {{
-                            console.log("자동 이동 차단됨, 버튼 표시");
-                        }}
-
-                        // 2. 만약 자동 이동이 차단되었다면, 아래 UI가 보여집니다.
-                        // target="_top"은 보안 차단을 100% 우회합니다.
-                        wrapper.innerHTML = `
-                            <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background-color:#f0f2f6; text-align:center;">
-                                <h3 style="color:#333; margin-bottom:10px;">✅ 주소 선택 완료!</h3>
-                                <p style="margin-bottom:20px; color:#555; font-size:14px;">${{fullAddr}}</p>
-                                <a href="${{finalUrl}}" target="_top" style="
-                                    text-decoration:none;
-                                    background-color:#FF4B4B;
-                                    color:white;
-                                    padding:15px 30px;
-                                    font-size:18px;
-                                    font-weight:bold;
-                                    border-radius:8px;
-                                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                                    display:inline-block;
-                                ">
-                                    👇 여기를 눌러 주소 적용하기
-                                </a>
-                                <p style="margin-top:15px; color:#888; font-size:12px;">(보안을 위해 버튼을 직접 눌러주세요)</p>
-                            </div>
-                        `;
+                        // UI 전환
+                        element_layer.style.display = 'none';
+                        result_layer.style.display = 'flex';
+                        
+                        // 데이터 바인딩
+                        addr_text.innerText = fullAddr;
+                        apply_btn.href = finalUrl;
                     }},
                     width : '100%',
                     height : '100%',
@@ -310,7 +336,7 @@ else:
             
             a1, a2 = st.columns([2, 1])
             
-            # [Key 바인딩] 상단의 session_state['k_addr_full'] 값이 여기에 표시됨
+            # [Key 바인딩] session_state에 값이 있으면 자동으로 채워짐
             addr_full = a1.text_input(
                 "기본 주소 (자동 입력됨)", 
                 placeholder="위 검색창에서 주소를 선택하세요.", 
