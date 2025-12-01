@@ -12,22 +12,19 @@ from googleapiclient.discovery import build
 from datetime import datetime
 
 # ==========================================
-# 🚀 [앱 기본 설정]
+# 🚀 [앱 기본 설정 및 주소 처리]
 # ==========================================
 st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 
-# ------------------------------------------
-# [핵심 수정 1] URL 파라미터 감지 후 '입력창 키(Key)'에 강제 할당
-# ------------------------------------------
-# Streamlit 최신 버전 대응 (query_params)
-query_params = st.query_params
-
-if "addr" in query_params:
-    new_addr = query_params["addr"]
-    # 💡 중요: text_input의 key인 'k_addr_full'에 직접 값을 꽂아넣어야 함
-    st.session_state['k_addr_full'] = new_addr
-    # URL 파라미터 초기화
+# [핵심 로직] 주소 검색 후 URL 파라미터로 돌아왔을 때 값을 잡아내는 부분
+# 이 코드는 무조건 맨 위에 있어야 합니다.
+if "addr" in st.query_params:
+    st.session_state['selected_addr'] = st.query_params["addr"]
+    st.session_state['addr_just_updated'] = True # 주소 업데이트 플래그
     st.query_params.clear()
+
+if 'selected_addr' not in st.session_state:
+    st.session_state['selected_addr'] = ''
 
 # ==========================================
 # ⚙️ [사용자 설정]
@@ -78,6 +75,7 @@ def upload_file_to_gas(file_obj, custom_name_prefix):
         st.error(f"연결 오류: {str(e)}")
         return ""
 
+# 유효성 검사 함수들
 def clean_number(num): return re.sub(r'\D', '', str(num))
 def format_biz_no(num):
     c = clean_number(num)
@@ -89,7 +87,6 @@ def format_phone(num):
     if c.startswith('02'):
         return f"{c[:2]}-{c[2:5]}-{c[5:]}" if l == 9 else f"{c[:2]}-{c[2:6]}-{c[6:]}"
     return f"{c[:3]}-{c[3:6]}-{c[6:]}" if l == 10 else f"{c[:3]}-{c[3:7]}-{c[7:]}"
-
 def validate_biz_no(n): return len(clean_number(n)) == 10
 def validate_phone(n): c = clean_number(n); return c.startswith("0") and (9 <= len(c) <= 11)
 def validate_email(e): return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', e) is not None
@@ -103,10 +100,6 @@ if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
     st.session_state['user_name'] = None
     st.session_state['is_approved'] = False
-
-# 세션 상태에 입력창 키가 없으면 초기화
-if 'k_addr_full' not in st.session_state:
-    st.session_state['k_addr_full'] = ""
 
 try:
     gc = get_services()
@@ -139,6 +132,11 @@ if not st.session_state['user_id']:
             if not found: st.error("정보가 일치하지 않습니다.")
     with tab2:
         st.subheader("📝 파트너사 가입 신청")
+
+# [안전] 비밀번호 경고 문구
+
+        st.warning("⚠️ 보안을 위해 금융/포털 등에서 사용하는 중요 비밀번호는 피해주세요.")
+
         nid = st.text_input("희망 아이디", key="join_id")
         npw = st.text_input("희망 비밀번호", type="password", key="join_pw")
         nname = st.text_input("업체명 (이름)", key="join_name")
@@ -170,7 +168,7 @@ else:
     col_t1.subheader(f"👋 {uname}님 환영합니다.")
     if col_t2.button("로그아웃"):
         st.session_state['user_id'] = None
-        st.session_state['k_addr_full'] = "" 
+        st.session_state['selected_addr'] = "" 
         st.rerun()
 
     if not st.session_state['is_approved']:
@@ -195,27 +193,62 @@ else:
                 st.success("저장됨")
     else:
         st.info(ADMIN_NOTICE)
+        
+        # ---------------------------------------------------------
+        # 🟢 등록 폼 시작 (순서 변경: 고객정보 -> 파일 -> 주소 -> 담당자)
+        # ---------------------------------------------------------
         with st.form("register_form"):
             st.markdown("#### 1. 고객사 정보")
             c1, c2 = st.columns(2)
-            c_name = c1.text_input("고객사명 (필수)", placeholder="예: 비전엠1", key="k_c_name")
+            c_name = c1.text_input("고객사명 (필수)", placeholder="예: 비전엠1 (영어 불가)", key="k_c_name")
             c_rep = c2.text_input("대표자명 (필수)", key="k_c_rep")
             
+            # 📍 [요청반영] 대표자명 입력 직후 이미지 업로드 섹션 배치
+            st.markdown("---")
+            st.markdown("#### 📂 증빙서류 업로드 (필수)")
+            st.caption("사업자등록증 또는 명함 중 하나는 반드시 첨부해야 합니다.")
+            col_f1, col_f2 = st.columns(2)
+            up_file_biz = col_f1.file_uploader("사업자등록증", type=['png', 'jpg', 'pdf'], key="k_file_biz")
+            up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'pdf'], key="k_file_card")
+
+            st.markdown("---")
             c3, c4 = st.columns(2)
-            biz_no_input = c3.text_input("사업자번호", placeholder="숫자만", key="k_biz_no")
+            biz_no_input = c3.text_input("사업자번호", placeholder="숫자만 입력", key="k_biz_no")
             industry = c4.selectbox("업종", ["건설", "건축", "토목", "제조", "자동차", "항공", "기타"], key="k_industry")
 
             st.markdown("---")
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [핵심 수정 2] 자바스크립트 개선 (window.top 사용)
+            # 💡 [필살기] 보안 정책 우회를 위한 iframe + Link Target 방식
             # -----------------------------------------------------
             daum_code = """
-            <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #333; position:relative"></div>
+            <style>
+                body { margin: 0; padding: 0; font-family: sans-serif; }
+                .success-box { display: none; text-align: center; padding: 20px; background: #e6fffa; border: 2px solid #38b2ac; border-radius: 10px; }
+                .success-box h3 { margin: 0 0 10px 0; color: #234e52; }
+                .btn-apply {
+                    display: inline-block; padding: 12px 24px; background-color: #319795; color: white;
+                    text-decoration: none; font-weight: bold; border-radius: 6px; font-size: 16px;
+                    transition: background 0.2s; cursor: pointer;
+                }
+                .btn-apply:hover { background-color: #285e61; }
+            </style>
+            
+            <div id="layer" style="display:block; width:100%; height:400px; border:1px solid #ddd;"></div>
+            
+            <div id="result" class="success-box">
+                <h3>✅ 주소가 선택되었습니다!</h3>
+                <p>아래 버튼을 눌러야 입력창에 적용됩니다.</p>
+                <a id="apply_link" href="#" target="_top" class="btn-apply">👉 주소 입력 적용하기 (클릭)</a>
+            </div>
+
             <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
             <script>
                 var element_layer = document.getElementById('layer');
+                var element_result = document.getElementById('result');
+                var link_btn = document.getElementById('apply_link');
+
                 new daum.Postcode({
                     oncomplete: function(data) {
                         var addr = ''; 
@@ -229,15 +262,28 @@ else:
                             addr = data.jibunAddress;
                         }
                         var fullAddr = '[' + data.zonecode + '] ' + addr + extraAddr;
-                        
-                        // [수정] window.top을 사용하여 더 확실하게 URL 변경 시도
-                        try {
-                            var currentUrl = window.parent.location.href.split('?')[0];
-                            window.parent.location.href = currentUrl + "?addr=" + encodeURIComponent(fullAddr);
-                        } catch(e) {
-                            // 보안 정책으로 parent 접근 실패 시 clipboard 복사 유도 (혹시 모를 대비)
-                            alert("자동 입력에 실패했습니다. 주소가 복사되었으니 붙여넣기 해주세요: " + fullAddr);
+
+                        // [중요] 부모 창(앱)의 URL을 찾아서 파라미터 추가
+                        // document.referrer는 iframe을 포함하고 있는 부모 페이지의 주소입니다.
+                        var parentUrl = document.referrer;
+                        if (!parentUrl || parentUrl === "") {
+                            // 로컬 테스트 등 referrer가 없을 경우를 대비한 방어 코드
+                            parentUrl = window.location.ancestorOrigins[0];
                         }
+                        
+                        // 기존 파라미터 제거 후 addr 추가
+                        var baseUrl = parentUrl.split('?')[0];
+                        var finalUrl = baseUrl + "?addr=" + encodeURIComponent(fullAddr);
+                        
+                        // 링크에 주소 심기
+                        link_btn.href = finalUrl;
+                        
+                        // 1. 레이어 숨기고 버튼 보여주기
+                        element_layer.style.display = 'none';
+                        element_result.style.display = 'block';
+                        
+                        // 2. 편의를 위해 버튼 자동 클릭 시도 (브라우저가 허용하면 자동 적용됨)
+                        link_btn.click();
                     },
                     width : '100%',
                     height : '100%',
@@ -246,14 +292,17 @@ else:
             </script>
             """
             
+            # 주소 검색창 Expander
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
-                components.html(daum_code, height=410)
+                components.html(daum_code, height=420)
             
             a1, a2 = st.columns([2, 1])
             
-            # [핵심 수정 3] value 매개변수를 제거하고 session_state를 믿음
-            # key="k_addr_full"이 지정되어 있으므로, 위에서 st.session_state['k_addr_full'] 값을 바꾼 게 적용됨
-            addr_full = a1.text_input("기본 주소 (자동 입력됨)", placeholder="검색 시 자동 입력", key="k_addr_full")
+            # [값 바인딩] session_state에 저장된 값을 value에 할당
+            addr_val = st.session_state.get('selected_addr', '')
+            addr_full = a1.text_input("기본 주소 (자동 입력됨)", value=addr_val, disabled=True, key="k_addr_display")
+            # 실제 Form Submit용 데이터는 hidden으로 처리하거나 그냥 위 disabled 값 사용
+            
             addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
 
             st.markdown("---")
@@ -264,12 +313,6 @@ else:
             mgr_ph_input = m2.text_input("연락처", key="k_mgr_ph")
             mgr_em = m3.text_input("이메일", key="k_mgr_em")
 
-            st.markdown("---")
-            st.markdown("#### 4. 첨부파일")
-            col_f1, col_f2 = st.columns(2)
-            up_file_biz = col_f1.file_uploader("사업자등록증", type=['png', 'jpg', 'pdf'], key="k_file_biz")
-            up_file_card = col_f2.file_uploader("명함", type=['png', 'jpg', 'pdf'], key="k_file_card")
-            
             st.markdown("---")
             agree = st.checkbox("✅ 개인정보 수집 동의", key="k_agree")
             submit_btn = st.form_submit_button("🚀 등록 접수하기", type="primary")
@@ -299,7 +342,7 @@ else:
                             ws_req.append_row(row)
                             st.success("✅ 접수 완료!")
                             st.balloons()
-                            st.session_state['k_addr_full'] = "" # 초기화
+                            st.session_state['selected_addr'] = "" # 초기화
                         except Exception as e:
                             st.error(f"오류: {e}")
 
