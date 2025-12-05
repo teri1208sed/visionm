@@ -206,11 +206,53 @@ else:
                 st.success("✅ 회원 정보가 저장되었습니다!")
                 st.rerun()
         with adm_tab2:
-            r_df = pd.DataFrame(ws_req.get_all_records())
-            edited_req = st.data_editor(r_df, num_rows="dynamic", key="redit")
-            if st.button("접수내역 저장"):
-                ws_req.update([edited_req.columns.values.tolist()] + edited_req.values.tolist())
-                st.success("저장 완료!")
+            st.markdown("##### 📝 접수 대장 실시간 관리")
+            st.info("💡 여기서 '상태'를 변경하고 저장하면, PC 프로그램에도 즉시 반영됩니다.")
+            
+            # 데이터 로드
+            current_data = ws_req.get_all_records()
+            r_df = pd.DataFrame(current_data)
+            
+            # 데이터 에디터 설정 (상태 변경 편의성 증대)
+            column_config = {
+                "상태": st.column_config.SelectboxColumn(
+                    "상태",
+                    options=["대기중", "접수대기", "등록진행중", "승인대기", "승인", "반려", "타업체선순위", "오류"],
+                    required=True
+                ),
+                "파일(사업자)": st.column_config.LinkColumn("사업자증", display_text="보기"),
+                "파일(명함)": st.column_config.LinkColumn("명함", display_text="보기"),
+            }
+            
+            edited_req = st.data_editor(
+                r_df, 
+                num_rows="dynamic", 
+                key="redit", 
+                column_config=column_config,
+                use_container_width=True
+            )
+            
+            if st.button("접수내역 저장 (동기화)"):
+                with st.spinner("구글 시트에 저장 중..."):
+                    try:
+                        # 1. 데이터프레임의 NaN 값을 빈 문자열로 변환 (오류 방지)
+                        edited_req = edited_req.fillna("")
+                        
+                        # 2. 헤더(컬럼명)와 값 분리
+                        header = edited_req.columns.values.tolist()
+                        data = edited_req.values.tolist()
+                        
+                        # 3. 시트 클리어 후 다시 쓰기 (가장 확실한 동기화 방법)
+                        ws_req.clear()
+                        ws_req.append_row(header)
+                        ws_req.append_rows(data)
+                        
+                        st.success("✅ 저장이 완료되었습니다! PC 프로그램에서 '새로고침'을 누르면 반영됩니다.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"저장 중 오류 발생: {e}")
+                        
     else:
         st.info(ADMIN_NOTICE)
         
