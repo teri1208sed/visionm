@@ -393,11 +393,11 @@ else:
             
             # [Key 바인딩] session_state에 값이 있으면 자동으로 채워짐
             addr_full = a1.text_input(
-                "기본 주소 (자동 입력됨)", 
+                "기본 주소 (위의주소를 복사 붙여넣기필요)", 
                 placeholder="검색 후 '적용하기'를 누르세요.", 
                 key="k_addr_full"
             )
-            addr_detail = a2.text_input("상세 주소 (필수)", placeholder="101호", key="k_addr_detail")
+            addr_detail = a2.text_input("상세 주소 (필수)", placeholder="없으면 점(.)기입", key="k_addr_detail")
 
             st.markdown("---")
             st.markdown("#### 3. 담당자 정보")
