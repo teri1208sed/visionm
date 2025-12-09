@@ -12,27 +12,55 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
 # ==========================================
-# 🚫 [보안 & 디자인] 헤더, 푸터, 메뉴, 깃허브 아이콘 모두 숨기기
+# 🚫 [최종 강력 버전] 헤더, 푸터, 뷰어 배지, 툴바 완벽 제거 CSS
 # ==========================================
-hide_all_style = """
+hide_final_style = """
     <style>
-    /* 1. 우측 상단 햄버거 메뉴(점 3개) 숨기기 */
-    #MainMenu {visibility: hidden;}
+    /* 1. 상단 헤더 전체 (햄버거 메뉴, 프로필, 데코레이션 바 등) 숨기기 */
+    header[data-testid="stHeader"] {
+        visibility: hidden !important;
+        height: 0px !important;
+        display: none !important;
+        opacity: 0 !important;
+    }
+
+    /* 2. 하단 푸터 (Made with Streamlit) 숨기기 */
+    footer {
+        visibility: hidden !important;
+        height: 0px !important;
+        display: none !important;
+    }
+
+    /* 3. (중요) 우측 하단 뷰어 배지 및 프로필 아이콘(빨간색 아이콘) 숨기기 */
+    .viewerBadge_container__1QSob, 
+    div[class*="viewerBadge"],
+    iframe[title="Streamlit Cloud Status"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 4. 툴바 (Deploy 버튼, 점 3개 메뉴 등) 숨기기 */
+    div[data-testid="stToolbar"] {
+        display: none !important;
+    }
+
+    /* 5. 상단 색상 띠(Decoration) 숨기기 */
+    div[data-testid="stDecoration"] {
+        display: none !important;
+    }
+
+    /* 6. 메인 콘텐츠 여백을 위로 당겨서 빈 공간 없애기 */
+    .block-container {
+        padding-top: 0rem !important;
+    }
     
-    /* 2. 하단 'Hosted with Streamlit' 푸터 숨기기 */
-    footer {visibility: hidden;}
-    
-    /* 3. 상단 헤더(색깔 띠) 전체 숨기기 - 계정 정보 접근 불가 */
-    header {visibility: hidden;}
-    
-    /* 4. 배포 버튼 등 기타 요소 숨기기 */
-    .stDeployButton {display:none;}
-    
-    /* (선택) 전체 배경색과 여백 조정이 필요하면 추가 가능 */
-    /* .block-container {padding-top: 1rem;} */
+    /* 7. 혹시라도 남을지 모르는 모든 헤더 강제 투명화 */
+    .stApp > header {
+        background-color: transparent !important;
+    }
     </style>
 """
-st.markdown(hide_all_style, unsafe_allow_html=True)
+st.markdown(hide_final_style, unsafe_allow_html=True)
 # ==========================================
 # 🚀 [앱 기본 설정]
 # ==========================================
