@@ -21,60 +21,38 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ==========================================
-# 🚫 [보안 & 디자인] 헤더, 푸터, 뷰어 배지 완벽 제거 (Data-Test-ID 기반)
+# 🎨 [디자인] 앱 내부 여백 및 장식 제거 (안전함)
 # ==========================================
 hide_final_style = """
     <style>
-    /* 1. [핵심] 스크린샷에 나온 'data-testid' 속성을 직접 타격하여 숨김 */
-    [data-testid="stStatusWidget"],       /* 우측 상단/하단 상태 위젯 */
-    [data-testid="appCreatorAvatar"],     /* 스크린샷의 프로필 이미지 */
-    [data-testid="manageAppButton"],      /* 앱 관리 버튼 */
-    [data-testid="stToolbar"],            /* 실행 툴바 */
-    [data-testid="stDecoration"],         /* 상단 데코레이션 바 */
-    [data-testid="stHeader"]              /* 헤더 전체 */
-    {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0px !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
-
-    /* 2. 뷰어 배지 및 프로필 컨테이너 (클래스 이름 와일드카드) */
-    div[class*="viewerBadge"],            /* 'viewerBadge'가 포함된 모든 div */
-    div[class*="_profileContainer"],      /* '_profileContainer'가 포함된 모든 div */
-    div[class*="_profilePreview"]         /* '_profilePreview'가 포함된 모든 div */
-    {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    /* 3. Streamlit Cloud 상태 표시 아이프레임 */
-    iframe[title="Streamlit Cloud Status"] {
-        display: none !important;
-        width: 0px !important;
-    }
-
-    /* 4. 푸터 숨기기 */
-    footer {
+    /* 1. 상단 장식 띠(Decoration) 숨기기 */
+    div[data-testid="stDecoration"] {
         display: none !important;
     }
 
-    /* 5. 콘텐츠 여백 제거 */
+    /* 2. 툴바 (우측 상단 점 3개 메뉴 등) 숨기기 */
+    div[data-testid="stToolbar"] {
+        display: none !important;
+    }
+
+    /* 3. 상단 헤더 공간 없애기 */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    /* 4. 메인 콘텐츠 여백 최소화 */
     .block-container {
-        padding-top: 0rem !important;
+        padding-top: 1rem !important; /* 너무 0이면 답답해 보일 수 있어 1rem 추천 */
+        padding-bottom: 1rem !important;
     }
     
-    /* 6. 혹시 모를 상단 헤더 투명화 */
-    header {
-        background-color: transparent !important;
+    /* 5. 푸터 숨기기 */
+    footer {
+        display: none !important;
     }
     </style>
 """
 st.markdown(hide_final_style, unsafe_allow_html=True)
-
-
-
 # ------------------------------------------
 # [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
