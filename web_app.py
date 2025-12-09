@@ -12,17 +12,27 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
 # ==========================================
-# 🚫 [보안] GitHub 아이콘 및 하단 푸터 숨기기
+# 🚫 [보안 & 디자인] 헤더, 푸터, 메뉴, 깃허브 아이콘 모두 숨기기
 # ==========================================
-hide_github_style = """
+hide_all_style = """
     <style>
+    /* 1. 우측 상단 햄버거 메뉴(점 3개) 숨기기 */
     #MainMenu {visibility: hidden;}
-    .stDeployButton {display:none;}
+    
+    /* 2. 하단 'Made with Streamlit' 푸터 숨기기 */
     footer {visibility: hidden;}
+    
+    /* 3. 상단 헤더(색깔 띠) 전체 숨기기 - 계정 정보 접근 불가 */
     header {visibility: hidden;}
+    
+    /* 4. 배포 버튼 등 기타 요소 숨기기 */
+    .stDeployButton {display:none;}
+    
+    /* (선택) 전체 배경색과 여백 조정이 필요하면 추가 가능 */
+    /* .block-container {padding-top: 1rem;} */
     </style>
 """
-st.markdown(hide_github_style, unsafe_allow_html=True)
+st.markdown(hide_all_style, unsafe_allow_html=True)
 # ==========================================
 # 🚀 [앱 기본 설정]
 # ==========================================
