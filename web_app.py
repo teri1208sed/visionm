@@ -6,6 +6,7 @@ import requests
 import base64   
 import json
 import os
+import time  # time 모듈 추가 (하단 sleep 함수 사용 위해)
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -20,14 +21,16 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ------------------------------------------
-# [핵심 로직] URL 파라미터 감지 및 세션 주입
+# [핵심 로직 수정 1] URL 파라미터 감지 -> 임시 변수 저장
 # ------------------------------------------
 if "addr" in st.query_params:
-    st.session_state['k_addr_full'] = st.query_params["addr"]
+    # 파라미터를 직접 k_addr_full에 넣지 않고 임시 키에 저장
+    st.session_state['k_addr_temp'] = st.query_params["addr"]
     st.query_params.clear()
     # 파라미터가 있을 때만 리런 (무한 루프 방지)
     st.rerun()
 
+# k_addr_full 초기화
 if 'k_addr_full' not in st.session_state:
     st.session_state['k_addr_full'] = ''
 
@@ -389,6 +392,14 @@ else:
             with st.expander("📮 주소 검색창 열기 (클릭)", expanded=False):
                 components.html(daum_code, height=410)
             
+            # -----------------------------------------------------
+            # [핵심 로직 수정 2] 임시 변수 -> 실제 위젯 키로 값 이동
+            # (반드시 위젯 생성 직전에 수행해야 함)
+            # -----------------------------------------------------
+            if 'k_addr_temp' in st.session_state and st.session_state['k_addr_temp']:
+                st.session_state['k_addr_full'] = st.session_state['k_addr_temp']
+                del st.session_state['k_addr_temp']  # 임시 변수 삭제
+
             a1, a2 = st.columns([2, 1])
             
             # [Key 바인딩] session_state에 값이 있으면 자동으로 채워짐
