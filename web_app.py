@@ -11,7 +11,18 @@ import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
-
+# ==========================================
+# 🚫 [보안] GitHub 아이콘 및 하단 푸터 숨기기
+# ==========================================
+hide_github_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    .stDeployButton {display:none;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_github_style, unsafe_allow_html=True)
 # ==========================================
 # 🚀 [앱 기본 설정]
 # ==========================================
