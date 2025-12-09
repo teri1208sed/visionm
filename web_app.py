@@ -19,7 +19,7 @@ hide_all_style = """
     /* 1. 우측 상단 햄버거 메뉴(점 3개) 숨기기 */
     #MainMenu {visibility: hidden;}
     
-    /* 2. 하단 'Made with Streamlit' 푸터 숨기기 */
+    /* 2. 하단 'Hosted with Streamlit' 푸터 숨기기 */
     footer {visibility: hidden;}
     
     /* 3. 상단 헤더(색깔 띠) 전체 숨기기 - 계정 정보 접근 불가 */
