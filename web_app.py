@@ -21,11 +21,11 @@ st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
 APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ==========================================
-# 🚫 [보안 & 디자인] 헤더, 푸터, 뷰어 배지 완벽 제거 CSS
+# 🚫 [보안 & 디자인] 헤더, 푸터, 뷰어 배지 완벽 제거 CSS (수정됨)
 # ==========================================
 hide_final_style = """
     <style>
-    /* 1. 상단 헤더 전체 (햄버거 메뉴, 프로필, 데코레이션 바 등) 숨기기 */
+    /* 1. 상단 헤더 전체 숨기기 */
     header[data-testid="stHeader"] {
         visibility: hidden !important;
         height: 0px !important;
@@ -40,13 +40,21 @@ hide_final_style = """
         display: none !important;
     }
 
-    /* 3. 우측 하단 뷰어 배지 및 프로필 아이콘(붉은색 아이콘) 숨기기 */
-    .viewerBadge_container__1QSob, 
+    /* 3. [핵심] 우측 하단 뷰어 배지, 프로필 아이콘, 상태 표시줄 강력 제거 */
+    /* 클래스 이름에 'viewerBadge', '_profileContainer', 'StatusWidget'이 포함된 모든 요소를 숨깁니다 */
+    .viewerBadge_container__1QSob,
     div[class*="viewerBadge"],
+    div[class*="_profileContainer"],
+    div[class*="_profilePreview"],
+    div[data-testid="stStatusWidget"],
+    img[alt="App Creator Avatar"],
     iframe[title="Streamlit Cloud Status"] {
         display: none !important;
         visibility: hidden !important;
         height: 0px !important;
+        width: 0px !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
     }
 
     /* 4. 툴바 (Deploy 버튼, 점 3개 메뉴 등) 숨기기 */
@@ -59,12 +67,12 @@ hide_final_style = """
         display: none !important;
     }
 
-    /* 6. 메인 콘텐츠 여백을 위로 당겨서 빈 공간 없애기 */
+    /* 6. 메인 콘텐츠 여백 제거 */
     .block-container {
         padding-top: 0rem !important;
     }
     
-    /* 7. 혹시라도 남을지 모르는 모든 헤더 강제 투명화 */
+    /* 7. 헤더 강제 투명화 */
     .stApp > header {
         background-color: transparent !important;
     }
