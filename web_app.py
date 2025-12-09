@@ -73,50 +73,6 @@ hide_final_style = """
 """
 st.markdown(hide_final_style, unsafe_allow_html=True)
 
-# ==========================================
-# ⚡ [핵심] 자바스크립트 강제 주입 (부모 창 제어)
-# ==========================================
-def inject_js_remover():
-    js_code = """
-        <script>
-            function removeStreamlitElements() {
-                try {
-                    // 1. 부모 문서(window.parent.document)에 접근합니다.
-                    // (Streamlit Cloud는 동일 도메인이라 접근 가능)
-                    const parentDoc = window.parent.document;
-                    
-                    // 2. 지워야 할 요소들의 선택자 목록
-                    const targets = [
-                        '[data-testid="stStatusWidget"]',      // 상단/하단 상태 위젯
-                        '[data-testid="appCreatorAvatar"]',    // 프로필 이미지
-                        '[data-testid="manageAppButton"]',     // 앱 관리 버튼
-                        'div[class*="viewerBadge"]',           // 우측 하단 뷰어 배지 (붉은 아이콘)
-                        'iframe[title="Streamlit Cloud Status"]' // 하단 상태바 아이프레임
-                    ];
-
-                    // 3. 요소를 찾아 강제로 숨김 처리
-                    targets.forEach(selector => {
-                        const elements = parentDoc.querySelectorAll(selector);
-                        elements.forEach(el => {
-                            el.style.display = 'none !important';
-                            el.style.visibility = 'hidden !important';
-                            el.remove(); // 아예 DOM에서 삭제 시도
-                        });
-                    });
-                } catch (e) {
-                    console.log("부모 요소 접근 차단됨 (로컬/다른 도메인):", e);
-                }
-            }
-
-            // 4. 로딩 시점에 따라 요소가 늦게 뜰 수 있으므로 0.5초마다 반복 수행
-            setInterval(removeStreamlitElements, 500);
-        </script>
-    """
-    # 높이 0의 숨겨진 iframe을 만들어 스크립트를 실행
-    components.html(js_code, height=0, width=0)
-
-# 앱 실행 시 함수 호출
-inject_js_remover()
 
 
 # ------------------------------------------
