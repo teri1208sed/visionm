@@ -6,13 +6,22 @@ import requests
 import base64   
 import json
 import os
-import time  # time 모듈 추가 (하단 sleep 함수 사용 위해)
+import time
 import streamlit.components.v1 as components
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime
+
 # ==========================================
-# 🚫 [최종 강력 버전] 헤더, 푸터, 뷰어 배지, 툴바 완벽 제거 CSS
+# 🚀 [앱 기본 설정]
+# ==========================================
+st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
+
+# 👇 고객님의 실제 배포 URL (정확해야 합니다)
+APP_BASE_URL = "https://visionm.streamlit.app"
+
+# ==========================================
+# 🚫 [보안 & 디자인] 헤더, 푸터, 뷰어 배지 완벽 제거 CSS
 # ==========================================
 hide_final_style = """
     <style>
@@ -31,12 +40,13 @@ hide_final_style = """
         display: none !important;
     }
 
-    /* 3. (중요) 우측 하단 뷰어 배지 및 프로필 아이콘(빨간색 아이콘) 숨기기 */
+    /* 3. 우측 하단 뷰어 배지 및 프로필 아이콘(붉은색 아이콘) 숨기기 */
     .viewerBadge_container__1QSob, 
     div[class*="viewerBadge"],
     iframe[title="Streamlit Cloud Status"] {
         display: none !important;
         visibility: hidden !important;
+        height: 0px !important;
     }
 
     /* 4. 툴바 (Deploy 버튼, 점 3개 메뉴 등) 숨기기 */
@@ -61,16 +71,9 @@ hide_final_style = """
     </style>
 """
 st.markdown(hide_final_style, unsafe_allow_html=True)
-# ==========================================
-# 🚀 [앱 기본 설정]
-# ==========================================
-st.set_page_config(page_title="VISIONM 파트너스", layout="centered")
-
-# 👇 고객님의 실제 배포 URL (정확해야 합니다)
-APP_BASE_URL = "https://visionm.streamlit.app"
 
 # ------------------------------------------
-# [핵심 로직 수정 1] URL 파라미터 감지 -> 임시 변수 저장
+# [핵심 로직] URL 파라미터 감지 및 세션 주입
 # ------------------------------------------
 if "addr" in st.query_params:
     # 파라미터를 직접 k_addr_full에 넣지 않고 임시 키에 저장
@@ -326,7 +329,7 @@ else:
             st.markdown("#### 2. 주소 정보")
 
             # -----------------------------------------------------
-            # [최종 해결책] "UI 교체 + 새 탭 적용 + 복사 버튼"
+            # [Daum 주소 검색]
             # -----------------------------------------------------
             daum_code = f"""
             <div id="wrapper" style="width:100%; height:400px; position:relative; background-color:#fff;">
@@ -442,7 +445,7 @@ else:
                 components.html(daum_code, height=410)
             
             # -----------------------------------------------------
-            # [핵심 로직 수정 2] 임시 변수 -> 실제 위젯 키로 값 이동
+            # [핵심 로직] 임시 변수 -> 실제 위젯 키로 값 이동
             # (반드시 위젯 생성 직전에 수행해야 함)
             # -----------------------------------------------------
             if 'k_addr_temp' in st.session_state and st.session_state['k_addr_temp']:
